@@ -1,0 +1,104 @@
+[
+  {
+    "id": "7f6dffc6-8c2f-4f80-a8de-d2ced3402344",
+    "scriptName": "【Nya】thinking",
+    "findRegex": "^([\\s\\S]*?)<\\/(?:think(?:ing)?)>|([\\s*reasoning[：:]\\s*(.*?)\\s*](?=[\\s\\S]|$))",
+    "replaceString": "",
+    "trimStrings": [],
+    "placement": [
+      2
+    ],
+    "disabled": false,
+    "markdownOnly": true,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  },
+  {
+    "id": "0c18e9c9-9001-4407-9f65-80cff8553a2a",
+    "scriptName": "【Nya】免责声明",
+    "findRegex": "/<emergency_task>([\\s\\S]*)</emergency_task>/i",
+    "replaceString": "",
+    "trimStrings": [],
+    "placement": [
+      2
+    ],
+    "disabled": false,
+    "markdownOnly": true,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  },
+  {
+    "id": "5ba26790-c682-4129-a9f8-cce277bef216",
+    "scriptName": "【Lyean】【Nya】summary1_10楼后仅保留摘要",
+    "findRegex": "^([\\s\\S]*)\\s*<details>\\s*<summary>\\s*摘要\\s*<\\/summary>",
+    "replaceString": "",
+    "trimStrings": [],
+    "placement": [
+      2
+    ],
+    "disabled": false,
+    "markdownOnly": true,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": 10,
+    "maxDepth": null
+  },
+  {
+    "id": "5b34e9ee-00fd-4e12-9cec-23e717fe205f",
+    "scriptName": "【Lyean】【Nya】summary2_隐藏10楼之内的摘要",
+    "findRegex": "([\\s\\S]*)\\s*<details>\\s*<summary>\\s*摘要\\s*<\\/summary>\\s*([\\s\\S]*?)\\s*<\\/details>\\s*",
+    "replaceString": "$1",
+    "trimStrings": [],
+    "placement": [
+      2
+    ],
+    "disabled": false,
+    "markdownOnly": true,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": 10
+  },
+  {
+    "id": "aa832dbb-045d-4535-9cf7-713999495dac",
+    "scriptName": "user_message",
+    "findRegex": "/.*/s",
+    "replaceString": "",
+    "trimStrings": [],
+    "placement": [
+      1
+    ],
+    "disabled": false,
+    "markdownOnly": false,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  },
+  {
+    "id": "eb1762e7-d3ea-4f64-805a-7c8247c912f2",
+    "scriptName": "selections",
+    "findRegex": "/(?:<selections>|\\[selections\\])([\\s\\S]*)(?:\\[\\/selections\\]|<\\/selections>|(?=<emergency _task>)|$)/i",
+    "replaceString": "",
+    "trimStrings": [],
+    "placement": [
+      2
+    ],
+    "disabled": false,
+    "markdownOnly": false,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  }
+]

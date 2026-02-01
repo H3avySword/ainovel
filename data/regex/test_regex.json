@@ -1,0 +1,26 @@
+[
+    {
+        "id": "regex_prompt_test",
+        "scriptName": "Prompt Replace (Apple->Orange)",
+        "findRegex": "/apple/gi",
+        "replaceString": "ORANGE",
+        "placement": [
+            1
+        ],
+        "disabled": false,
+        "markdownOnly": false,
+        "promptOnly": true
+    },
+    {
+        "id": "regex_display_test",
+        "scriptName": "Display Replace (AI->Virtual)",
+        "findRegex": "/AI/g",
+        "replaceString": "**VIRTUAL INT**",
+        "placement": [
+            2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false
+    }
+]

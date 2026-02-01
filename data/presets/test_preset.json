@@ -1,0 +1,13 @@
+{
+    "temperature": 0.99,
+    "top_p": 0.95,
+    "top_k": 40,
+    "openai_max_tokens": 2048,
+    "prompts": [
+        {
+            "role": "system",
+            "content": "You are a Test Assistant. Always answer briefly.",
+            "system_prompt": true
+        }
+    ]
+}
