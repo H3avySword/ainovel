@@ -56,3 +56,6 @@ temp_screen.png.encrypted
 # AI Agents / Editors
 .agent/
 .claude/
+AGENTS.md
+GEMINI.md
+CLAUDE.md

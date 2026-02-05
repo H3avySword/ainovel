@@ -4,42 +4,61 @@
     <!-- Floating Toolbar -->
     <div
       ref="toolbarRef"
-      class="absolute top-0 left-0 right-0 mx-auto w-fit z-50 transition-all duration-200 ease-out"
+      class="absolute top-0 left-0 right-0 z-50 flex justify-center px-2 transition-all duration-200 ease-out"
       :class="activeField ? 'translate-y-2 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'"
     >
-      <div class="bg-white/90 backdrop-blur-md border border-slate-200 shadow-xl shadow-slate-200/50 rounded-2xl px-3 py-1.5 flex items-center gap-1">
-        <div class="flex items-center gap-0.5 px-2 mr-2 border-r border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider select-none">
+      <div class="w-fit max-w-full rounded-2xl border border-slate-200 bg-white/90 px-2 py-1 shadow-xl shadow-slate-200/50 backdrop-blur-md">
+        <div class="inline-flex items-center gap-0.5 whitespace-nowrap">
+        <div class="flex items-center gap-0.5 px-1.5 mr-1.5 border-r border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wide select-none">
           {{ activeField === 'summary' ? 'Synopsis' : 'Content' }}
         </div>
 
-        <template v-if="!isPreviewingCurrent">
-          <button @mousedown.prevent @click="insertMarkdown('**', '**')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Bold"><Bold :size="18" :stroke-width="2.5" /></button>
-          <button @mousedown.prevent @click="insertMarkdown('*', '*')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Italic"><Italic :size="18" :stroke-width="2.5" /></button>
-          <div class="w-[1px] h-5 bg-slate-200 mx-1"></div>
-          <button @mousedown.prevent @click="insertMarkdown('# ')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Heading 1"><Heading1 :size="18" :stroke-width="2.5" /></button>
-          <button @mousedown.prevent @click="insertMarkdown('## ')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Heading 2"><Heading2 :size="18" :stroke-width="2.5" /></button>
-          <div class="w-[1px] h-5 bg-slate-200 mx-1"></div>
-          <button @mousedown.prevent @click="insertMarkdown('> ')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Quote"><Quote :size="18" :stroke-width="2.5" /></button>
-          <button @mousedown.prevent @click="insertMarkdown('`', '`')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Code"><Code :size="18" :stroke-width="2.5" /></button>
-          <div class="w-[1px] h-5 bg-slate-200 mx-1"></div>
-          <button @mousedown.prevent @click="insertMarkdown('- ')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="List"><List :size="18" :stroke-width="2.5" /></button>
-          <button @mousedown.prevent @click="insertMarkdown('1. ')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Numbered List"><ListOrdered :size="18" :stroke-width="2.5" /></button>
-          <button @mousedown.prevent @click="insertMarkdown('---\n')" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Divider"><Minus :size="18" :stroke-width="2.5" /></button>
-          <div class="w-[1px] h-5 bg-slate-200 mx-1"></div>
-          <button @mousedown.prevent @click="startPolishSelection" class="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-all" title="AI Polish Selection"><Sparkles :size="18" :stroke-width="2.5" /></button>
-          <div class="w-[1px] h-5 bg-slate-200 mx-1"></div>
-        </template>
+          <button @mousedown.prevent @click="insertMarkdown('**', '**')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Bold"><Bold :size="17" :stroke-width="2.5" /></button>
+          <button @mousedown.prevent @click="insertMarkdown('*', '*')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Italic"><Italic :size="17" :stroke-width="2.5" /></button>
+          <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
+          <button @mousedown.prevent @click="insertMarkdown('# ')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Heading 1"><Heading1 :size="17" :stroke-width="2.5" /></button>
+          <button @mousedown.prevent @click="insertMarkdown('## ')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Heading 2"><Heading2 :size="17" :stroke-width="2.5" /></button>
+          <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
+          <button @mousedown.prevent @click="insertMarkdown('> ')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Quote"><Quote :size="17" :stroke-width="2.5" /></button>
+          <button @mousedown.prevent @click="insertMarkdown('`', '`')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Code"><Code :size="17" :stroke-width="2.5" /></button>
+          <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
+          <button @mousedown.prevent @click="insertMarkdown('- ')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="List"><List :size="17" :stroke-width="2.5" /></button>
+          <button @mousedown.prevent @click="insertMarkdown('1. ')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Numbered List"><ListOrdered :size="17" :stroke-width="2.5" /></button>
+          <button @mousedown.prevent @click="insertMarkdown('---\n')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Divider"><Minus :size="17" :stroke-width="2.5" /></button>
+          <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
+          <button @mousedown.prevent @click="startPolishSelection" class="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-all" title="AI Polish Selection"><Sparkles :size="17" :stroke-width="2.5" /></button>
+          <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
 
-        <button
-          @mousedown.prevent
-          @click="togglePreview"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ml-1"
-          :class="isPreviewingCurrent ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-        >
-          <Eye v-if="isPreviewingCurrent" :size="14" />
-          <EyeOff v-else :size="14" />
-          <span>{{ isPreviewingCurrent ? 'Preview' : 'Edit' }}</span>
-        </button>
+        <div class="ml-0.5 rounded-xl bg-slate-100/90 p-1 grid grid-cols-2 gap-0.5 relative isolate">
+          <div
+            class="absolute top-1 bottom-1 left-1 rounded-lg bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]"
+            :style="{
+              width: 'calc(50% - 4px)',
+              transform: isPreviewingCurrent ? 'translateX(calc(100%))' : 'translateX(0)'
+            }"
+          />
+          <button
+            @mousedown.prevent
+            @click="setPreviewMode('edit')"
+            class="relative z-10 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors"
+            :class="!isPreviewingCurrent ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'"
+            title="Edit"
+          >
+            <Pencil :size="13" />
+            <span class="hidden lg:inline">Edit</span>
+          </button>
+          <button
+            @mousedown.prevent
+            @click="setPreviewMode('preview')"
+            class="relative z-10 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors"
+            :class="isPreviewingCurrent ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'"
+            title="Preview"
+          >
+            <Eye :size="13" />
+            <span class="hidden lg:inline">Preview</span>
+          </button>
+        </div>
+        </div>
       </div>
     </div>
 
@@ -165,7 +184,7 @@ import { NodeData, NodeType } from '../types';
 import { marked } from 'marked';
 import {
   Bold, Italic, Heading1, Heading2, Quote, List, ListOrdered,
-  Eye, EyeOff, Code, Minus, Type, ChevronDown, ChevronRight,
+  Eye, Pencil, Code, Minus, Type, ChevronDown, ChevronRight,
   Wand2, Sparkles
 } from 'lucide-vue-next';
 import { WritingTask } from '../types';
@@ -246,11 +265,12 @@ const insertMarkdown = (prefix: string, suffix: string = '') => {
     }, 0);
 };
 
-const togglePreview = () => {
+const setPreviewMode = (mode: 'edit' | 'preview') => {
+    const preview = mode === 'preview';
     if (activeField.value === 'summary') {
-        summaryPreview.value = !summaryPreview.value;
+        summaryPreview.value = preview;
     } else if (activeField.value === 'content') {
-        contentPreview.value = !contentPreview.value;
+        contentPreview.value = preview;
     }
 };
 

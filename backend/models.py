@@ -26,8 +26,6 @@ class NodeInfo(BaseModel):
     title: str
     summary: Optional[str] = ""
     content: Optional[str] = ""
-    
-    content: Optional[str] = ""
 
 class WritingTask(BaseModel):
     type: str # SYNOPSIS, CONTENT, POLISH_SELECTION
@@ -39,6 +37,9 @@ class ShortNovelState(BaseModel):
     novel_path: str
     current_node: NodeInfo
     novel_outline: str  # The content of the ROOT node
+    novel_title: Optional[str] = ""
+    current_node_title: Optional[str] = ""
+    chapter_title: Optional[str] = ""
     active_task: Optional[WritingTask] = None
 
 class ChatRequestShort(BaseModel):

@@ -51,7 +51,10 @@ export const generateWritingAssistantResponse = async (
           summary: currentNode?.summary || '',
           content: currentNode?.content || ''
         },
-        novel_outline: rootNode?.content || rootNode?.summary || ''
+        novel_outline: rootNode?.content || rootNode?.summary || '',
+        novel_title: rootNode?.title || '',
+        current_node_title: currentNode?.title || '',
+        chapter_title: currentNode?.type === NodeType.CHAPTER ? (currentNode?.title || '') : ''
       };
     } else {
       endpoint = `${baseUrl}/api/chat/long`;
