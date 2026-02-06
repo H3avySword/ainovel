@@ -84,13 +84,28 @@
            </div>
 
            <div class="flex-1 overflow-hidden relative">
-             <Editor
-               v-if="selectedNode"
-               :node="selectedNode"
-               @change="handleChange"
-               @save="handleEditorSave"
-               @start-ai-task="handleStartAiTask"
-             />
+              <Editor
+                v-if="selectedNode"
+                :node="selectedNode"
+                :projectMode="projectMode"
+                :isSplitModalOpen="isSplitModalOpen"
+                :isSplitGenerating="isSplitGenerating"
+                :splitChapterCount="splitChapterCount"
+                :splitPreviewChapters="splitPreviewChapters"
+                :splitError="splitError"
+                :canSplitNode="canSplitCurrentNode"
+                :splitTargetLabel="splitTargetLabel"
+                :splitCounterSuffix="splitCounterSuffix"
+                @change="handleChange"
+                @save="handleEditorSave"
+                @start-ai-task="handleStartAiTask"
+                @open-split-modal="handleOpenSplitModal"
+                @close-split-modal="handleCloseSplitModal"
+                @update-split-chapter-count="handleUpdateSplitChapterCount"
+                @generate-split-preview="handleGenerateSplitPreview"
+                @update-split-title="handleUpdateSplitTitle"
+                @apply-split-chapters="handleApplySplitChapters"
+              />
              <div v-else class="h-full flex flex-col items-center justify-center text-slate-300 space-y-4">
                 <div class="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
                   <div class="w-8 h-8 rounded bg-slate-200"></div>
@@ -164,19 +179,59 @@
             </div>
         </div>
     </div>
+    <!-- CONFIRMATION MODAL -->
+    <div v-if="confirmModalState.isOpen" class="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/20 backdrop-blur-[2px] animate-in fade-in duration-200">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] p-6 animate-in zoom-in-95 slide-in-from-bottom-2 duration-200 relative border border-white/40">
+            <div class="flex flex-col items-center text-center">
+                <!-- Icon -->
+                <div 
+                    class="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors"
+                    :class="confirmModalState.isDestructive ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-500'"
+                >
+                    <AlertTriangle v-if="confirmModalState.isDestructive" :size="24" stroke-width="2" />
+                    <Info v-else :size="24" stroke-width="2" />
+                </div>
+
+                <!-- Content -->
+                <h3 class="text-lg font-bold text-slate-800 tracking-tight mb-2">{{ confirmModalState.title }}</h3>
+                <p class="text-sm text-slate-500 leading-relaxed mb-8 px-2">
+                    {{ confirmModalState.message }}
+                </p>
+
+                <!-- Actions -->
+                <div class="w-full grid grid-cols-2 gap-3">
+                    <button
+                        @click="closeConfirmModal"
+                        class="h-10 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-100 transition-all"
+                    >
+                        取消
+                    </button>
+                    <button
+                        @click="handleConfirmAction"
+                        class="h-10 rounded-xl text-xs font-bold text-white shadow-lg shadow-indigo-100 hover:shadow-indigo-200 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+                        :class="confirmModalState.isDestructive ? 'bg-red-500 hover:bg-red-600 shadow-red-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'"
+                    >
+                        <Trash2 v-if="confirmModalState.isDestructive" :size="14" />
+                        <CheckCircle2 v-else :size="14" />
+                        <span>{{ confirmModalState.confirmLabel }}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, toRaw } from 'vue';
-import { NodeMap, NodeType, ProjectMode, NodeData, AppConfig, WritingTask } from './types';
-import { FileManager } from './services/FileManager';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { NodeMap, NodeType, ProjectMode, NodeData, AppConfig, WritingTask, SplitNodeItem } from './types';
 import TitleBar from './components/TitleBar.vue';
 import TreeSidebar from './components/TreeSidebar.vue';
 import Editor from './components/Editor.vue';
 import AIChatPanel from './components/AIChatPanel.vue';
 import {
-  SidebarClose, SidebarOpen, BookText, ScrollText, X as CloseIcon, Loader2
+  SidebarClose, SidebarOpen, BookText, ScrollText, X as CloseIcon, Loader2,
+  AlertTriangle, Trash2, Info, CheckCircle2
 } from 'lucide-vue-next';
 
 // --- Logic Helpers ---
@@ -259,160 +314,232 @@ const showNewModal = ref(false);
 const currentFilePath = ref("Documents/NebulaWrite/untitled.json");
 const appConfig = ref<AppConfig | null>(null);
 const activeTask = ref<WritingTask | null>(null);
+const isSplitModalOpen = ref(false);
+const isSplitGenerating = ref(false);
+const splitChapterCount = ref(8);
+const splitPreviewChapters = ref<SplitNodeItem[]>([]);
+const splitError = ref('');
+const projectRevision = ref(1);
+let removeProjectStateChangedListener: (() => void) | null = null;
+let syncSelectedNodeTimer: ReturnType<typeof setTimeout> | null = null;
+let nodeFieldLoadSeq = 0;
+const isProjectStateReady = ref(false);
+
+const confirmModalState = ref({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmLabel: '确定',
+    isDestructive: false,
+    confirmAction: async () => {}
+});
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
 const selectedNode = computed(() => nodes.value[selectedId.value]);
 
+const splitRuleMap: Record<ProjectMode, Partial<Record<NodeType, NodeType>>> = {
+  SHORT: {
+    [NodeType.ROOT]: NodeType.CHAPTER
+  },
+  LONG: {
+    [NodeType.ROOT]: NodeType.VOLUME,
+    [NodeType.VOLUME]: NodeType.SECTION,
+    [NodeType.SECTION]: NodeType.CHAPTER
+  }
+};
+
+const splitTypeLabelMap: Record<NodeType, string> = {
+  [NodeType.ROOT]: '总纲',
+  [NodeType.VOLUME]: '卷纲',
+  [NodeType.SECTION]: '篇纲',
+  [NodeType.CHAPTER]: '章纲',
+  [NodeType.SETTING_ROOT]: '设定',
+  [NodeType.SETTING_FOLDER]: '设定',
+  [NodeType.SETTING_ITEM]: '设定'
+};
+
+const splitCounterSuffixMap: Record<NodeType, string> = {
+  [NodeType.ROOT]: '',
+  [NodeType.VOLUME]: '卷',
+  [NodeType.SECTION]: '篇',
+  [NodeType.CHAPTER]: '章',
+  [NodeType.SETTING_ROOT]: '',
+  [NodeType.SETTING_FOLDER]: '',
+  [NodeType.SETTING_ITEM]: ''
+};
+
+const splitTargetNodeType = computed<NodeType | null>(() => {
+  const current = selectedNode.value;
+  if (!current) return null;
+  return splitRuleMap[projectMode.value]?.[current.type] || null;
+});
+
+const canSplitCurrentNode = computed(() => !!splitTargetNodeType.value);
+
+const splitTargetLabel = computed(() => {
+  const targetType = splitTargetNodeType.value;
+  if (!targetType) return '子节点';
+  return splitTypeLabelMap[targetType] || '子节点';
+});
+
+const splitCounterSuffix = computed(() => {
+  const targetType = splitTargetNodeType.value;
+  if (!targetType) return '';
+  return splitCounterSuffixMap[targetType] || '';
+});
+
+const getErrorMessage = (res: any, fallback: string) => {
+  if (!res) return fallback;
+  if (typeof res.error === 'string') return res.error;
+  if (res.error?.message) return res.error.message;
+  return fallback;
+};
+
+const applyProjectState = (data: any) => {
+  if (!data) return;
+  if (data.nodes) {
+    const mergedNodes: NodeMap = {};
+    for (const [id, incomingNode] of Object.entries(data.nodes as NodeMap)) {
+      const localNode = nodes.value[id];
+      if (localNode) {
+        mergedNodes[id] = {
+          ...incomingNode,
+          content: incomingNode.content || localNode.content || '',
+          summary: incomingNode.summary || localNode.summary || ''
+        } as NodeData;
+      } else {
+        mergedNodes[id] = incomingNode as NodeData;
+      }
+    }
+    nodes.value = mergedNodes;
+  }
+  if (data.projectMode) projectMode.value = data.projectMode;
+  if (data.lastOpenedId) selectedId.value = data.lastOpenedId;
+  if (Number.isInteger(data.revision)) projectRevision.value = data.revision;
+};
+
+const syncProjectStateFromMain = async (projectPath: string) => {
+  isProjectStateReady.value = false;
+  const res = await (window as any).electronAPI.project.getState({ projectPath });
+  if (!res?.success || !res?.data) {
+    throw new Error(getErrorMessage(res, '同步项目状态失败。'));
+  }
+  applyProjectState(res.data);
+  isProjectStateReady.value = true;
+};
+
 // --- Init Sidecar & Auto Load ---
 onMounted(async () => {
     if ((window as any).electronAPI) {
-        // 1. Get Config
-        const config = await (window as any).electronAPI.getAppConfig();
-        if (config && config.isReady) {
-            appConfig.value = config;
-        } else {
-            (window as any).electronAPI.onBackendReady(async () => {
-                const newConfig = await (window as any).electronAPI.getAppConfig();
-                appConfig.value = newConfig;
+        if ((window as any).electronAPI.onProjectStateChanged) {
+            removeProjectStateChangedListener = (window as any).electronAPI.onProjectStateChanged((payload: any) => {
+                if (!payload || payload.projectPath !== currentFilePath.value) return;
+                applyProjectState(payload.data);
             });
         }
 
-        // 2. Load Last Project
-        try {
-            if ((window as any).electronAPI?.getLastProject) {
-                const lastPath = await (window as any).electronAPI.getLastProject();
-                if (lastPath) {
-                    const data = await (window as any).electronAPI.loadProject(lastPath);
-                    if (data) {
-                        if (data.nodes) {
-                            nodes.value = data.nodes;
-                            projectMode.value = data.projectMode || 'LONG';
-                            selectedId.value = data.lastOpenedId && data.nodes[data.lastOpenedId] ? data.lastOpenedId : 'story-root';
-                            currentFilePath.value = lastPath;
-                        }
-                    }
-                }
+        // 1. Backend 配置与项目加载并行进行，减少首屏等待。
+        (async () => {
+            const config = await (window as any).electronAPI.getAppConfig();
+            if (config && config.isReady) {
+                appConfig.value = config;
+            } else {
+                (window as any).electronAPI.onBackendReady(async () => {
+                    const newConfig = await (window as any).electronAPI.getAppConfig();
+                    appConfig.value = newConfig;
+                });
             }
-        } catch (error) {
-            console.error("Failed to auto-load last project:", error);
-        }
+        })().catch((error: any) => {
+            console.warn('加载后端配置失败:', error);
+        });
+
+        // 2. Last Project 直接优先加载，避免被其他初始化阻塞。
+        (async () => {
+            if (!(window as any).electronAPI?.getLastProject) return;
+            const lastPath = await (window as any).electronAPI.getLastProject();
+            if (!lastPath) return;
+            currentFilePath.value = lastPath;
+            await syncProjectStateFromMain(lastPath);
+        })().catch((error: any) => {
+            console.error('Failed to auto-load last project:', error);
+        });
+    }
+});
+
+onUnmounted(() => {
+    if (removeProjectStateChangedListener) {
+        removeProjectStateChangedListener();
+        removeProjectStateChangedListener = null;
+    }
+    if (syncSelectedNodeTimer) {
+        clearTimeout(syncSelectedNodeTimer);
+        syncSelectedNodeTimer = null;
     }
 });
 
 // --- Content Loading Logic ---
-watch([selectedId, currentFilePath, appConfig], async () => {
+watch([selectedId, currentFilePath, isProjectStateReady], async () => {
+    if (!isProjectStateReady.value) return;
     if (!selectedId.value || !nodes.value[selectedId.value]) return;
-    if (!appConfig.value) return;
+    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) return;
 
-    const node = nodes.value[selectedId.value];
-    let needsUpdate = false;
+    const requestId = ++nodeFieldLoadSeq;
+    const targetNodeId = selectedId.value;
+    const targetProjectPath = currentFilePath.value;
+    const node = nodes.value[targetNodeId];
+    let contentLoaded = false;
+    let summaryLoaded = false;
     let newContent = node.content;
     let newSummary = node.summary;
 
-    // Always attempt to load from disk to ensure freshness vs project.json cache
-    // Content
-    if (node.type === NodeType.CHAPTER || node.type === NodeType.SETTING_ITEM) {
-        try {
-            console.log(`[Debug] Loading content for ${node.id} from disk...`);
-            // Use JSON parse/stringify for cleanest IPC object
-            const cleanNodes = JSON.parse(JSON.stringify(nodes.value));
-            const loaded = await FileManager.loadNode(currentFilePath.value, cleanNodes, projectMode.value, selectedId.value, 'content');
-            console.log(`[Debug] Loaded content result size:`, loaded ? loaded.length : 0);
-            
-            newContent = loaded;
-            needsUpdate = true;
-        } catch (e) {
-            console.warn("Content load failed, keeping existing content (if any)", e);
-            // Do NOT overwrite newContent with empty if it failed. 
-            // newContent currently holds reference to node.content (which might be empty from project.json, or exist in memory)
-            // If project.json was empty, we are still empty. 
-            // Ideally we retry? But for now just don't force overwrite with "".
-            needsUpdate = true; // Wait, if we didn't change newContent, do we update?
-            // If newContent === node.content, no change.
-            // But we must ensure reactivity triggers if we switched nodes.
-        }
+    // 并行加载正文与摘要，减少切换节点时的等待时间。
+    const needContent = node.type === NodeType.CHAPTER || node.type === NodeType.SETTING_ITEM;
+    const contentPromise = needContent
+        ? (window as any).electronAPI.project.loadNodeField({
+            projectPath: targetProjectPath,
+            nodeId: targetNodeId,
+            field: 'content'
+        })
+        : Promise.resolve(null);
+    const summaryPromise = (window as any).electronAPI.project.loadNodeField({
+        projectPath: targetProjectPath,
+        nodeId: targetNodeId,
+        field: 'summary'
+    });
+
+    const [contentResult, summaryResult] = await Promise.allSettled([contentPromise, summaryPromise]);
+
+    if (contentResult.status === 'fulfilled' && contentResult.value?.success) {
+        newContent = contentResult.value.data?.value || '';
+        contentLoaded = needContent;
+    } else if (contentResult.status === 'rejected') {
+        console.warn('Content load failed, keeping existing content (if any)', contentResult.reason);
     }
 
-    // Summary
-    try {
-        console.log(`[Debug] Loading outline for ${node.id} from disk...`);
-        const cleanNodes = JSON.parse(JSON.stringify(nodes.value));
-        const loaded = await FileManager.loadNode(currentFilePath.value, cleanNodes, projectMode.value, selectedId.value, 'outline');
-        console.log(`[Debug] Loaded outline result size:`, loaded ? loaded.length : 0);
-        newSummary = loaded;
-        needsUpdate = true;
-    } catch (e) {
-         console.warn("Summary load failed, keeping existing", e);
+    if (summaryResult.status === 'fulfilled' && summaryResult.value?.success) {
+        newSummary = summaryResult.value.data?.value || '';
+        summaryLoaded = true;
+    } else if (summaryResult.status === 'rejected') {
+        console.warn('Summary load failed, keeping existing', summaryResult.reason);
     }
 
-    if (needsUpdate) {
-        // Manipulate node directly in map is fine in Vue if reactivity is shallow?
-        // nodes is ref so nodes.value is reactive proxy.
-        // But nested objects need to be reactive.
-        // Assuming types are correct, we can assign directly.
-        // Alternatively, using spread to ensure reactivity update triggers.
-        const updatedNode = { ...node, content: newContent || "", summary: newSummary || "" };
-        nodes.value[selectedId.value] = updatedNode;
-    }
+    if (!contentLoaded && !summaryLoaded) return;
+
+    // 异步请求返回前，若节点或项目已切换，直接丢弃过期结果。
+    if (requestId !== nodeFieldLoadSeq) return;
+    if (selectedId.value !== targetNodeId) return;
+    if (currentFilePath.value !== targetProjectPath) return;
+
+    const currentNode = nodes.value[targetNodeId];
+    if (!currentNode) return;
+
+    nodes.value[targetNodeId] = {
+        ...currentNode,
+        content: contentLoaded ? (newContent || '') : (currentNode.content || ''),
+        summary: summaryLoaded ? (newSummary || '') : (currentNode.summary || '')
+    };
 }, { immediate: true });
-
-// Helper to strip content/summary for metadata save
-const prepareNodesForSave = (nodes: NodeMap): NodeMap => {
-  const cleanNodes: NodeMap = {};
-  for (const [id, node] of Object.entries(nodes)) {
-    // Create shallow copy and override content/summary
-    cleanNodes[id] = { ...node, content: '', summary: '' };
-  }
-  return cleanNodes;
-};
-
-// --- Persistence ---
-const persistChanges = async (
-    id: string,
-    field: keyof NodeData,
-    value: string,
-    fullNodeMap: NodeMap
-) => {
-    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) return;
-    const node = fullNodeMap[id];
-    if (!node) return;
-
-    try {
-        console.log(`[Debug] Persisting change for ${id} field ${field}`);
-        if (field === 'content') {
-             if (node.type === NodeType.CHAPTER || node.type === NodeType.SETTING_ITEM) {
-                 console.log(`[Debug] Saving content to disk for ${id}...`);
-                 // Ensure clean object for IPC
-                 const cleanNodes = JSON.parse(JSON.stringify(fullNodeMap));
-                 const res = await FileManager.saveNode(currentFilePath.value, cleanNodes, projectMode.value, id, value, 'content');
-                 console.log(`[Debug] Save content result:`, res);
-                 
-                 // Strip content for metadata save
-                 const metadataNodes = prepareNodesForSave(fullNodeMap);
-                 const projectUpdates = { nodes: metadataNodes };
-                 await (window as any).electronAPI.saveProject(currentFilePath.value, projectUpdates);
-             }
-        } else if (field === 'summary') {
-            console.log(`[Debug] Saving summary to disk for ${id}...`);
-            const cleanNodes = JSON.parse(JSON.stringify(fullNodeMap));
-            const res = await FileManager.saveNode(currentFilePath.value, cleanNodes, projectMode.value, id, value, 'outline');
-            console.log(`[Debug] Save summary result:`, res);
-            
-            // Strip content for metadata save
-            const metadataNodes = prepareNodesForSave(fullNodeMap);
-            const projectUpdates = { nodes: metadataNodes };
-            await (window as any).electronAPI.saveProject(currentFilePath.value, projectUpdates);
-        } else if (field === 'title') {
-             // For title updates, we still strip content to be safe and consistent
-             const metadataNodes = prepareNodesForSave(fullNodeMap);
-             const projectUpdates = { nodes: metadataNodes };
-             await (window as any).electronAPI.saveProject(currentFilePath.value, projectUpdates);
-        }
-    } catch (e) {
-        console.error("Auto-save failed", e);
-    }
-};
 
 const handleEditorSave = async (id: string, field: keyof NodeData, value: string) => {
     // 1. Prepare Update
@@ -428,12 +555,28 @@ const handleEditorSave = async (id: string, field: keyof NodeData, value: string
     const updatedNode = { ...node, ...updates };
     nodes.value[id] = updatedNode;
 
-    // 3. Persist
-    // Create a copy of nodes map to ensure consistency during async op?
-    // Actually fullNodeMap will reference the current reactive state which is updated.
-    // JSON.stringify will snapshot it if needed.
-    // persistChanges expects NodeMap.
-    persistChanges(id, field, value, toRaw(nodes.value));
+    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) return;
+
+    const res = await (window as any).electronAPI.project.updateNode({
+        projectPath: currentFilePath.value,
+        nodeId: id,
+        field,
+        value,
+        expectedRevision: projectRevision.value
+    });
+
+    if (!res?.success || !res?.data) {
+        console.error('保存失败', getErrorMessage(res, '更新节点失败'));
+        return;
+    }
+
+    nodes.value[id] = {
+        ...nodes.value[id],
+        ...res.data.node
+    };
+    if (Number.isInteger(res.data.revision)) {
+        projectRevision.value = res.data.revision;
+    }
 };
 
 // --- Actions ---
@@ -446,13 +589,12 @@ const createNewProject = async (mode: ProjectMode) => {
             if (!dirPath) return;
 
             const initialNodes = getInitialNodes(mode);
-            const success = await FileManager.createProject(dirPath, initialNodes, mode);
+            const createRes = await (window as any).electronAPI.createProject(dirPath, initialNodes, mode);
+            const success = !!createRes?.success;
 
             if (success) {
-                projectMode.value = mode;
-                nodes.value = initialNodes;
                 currentFilePath.value = dirPath;
-                selectedId.value = mode === 'LONG' ? 'vol-1' : 'chap-1';
+                await syncProjectStateFromMain(dirPath);
                 showNewModal.value = false;
             } else {
                 alert("创建项目结构失败，请检查目录权限。");
@@ -465,18 +607,18 @@ const createNewProject = async (mode: ProjectMode) => {
 };
 
 const handleSaveNovel = async () => {
-    if (currentFilePath.value && (window as any).electronAPI?.selectDirectory) {
-        // Strip content/summary for manual save as well
-        const metadataNodes = prepareNodesForSave(nodes.value);
-        const updates = {
-            projectMode: projectMode.value,
-            lastOpenedId: selectedId.value,
-            nodes: metadataNodes
-        };
-        await (window as any).electronAPI.saveProject(currentFilePath.value, updates);
-        showSaveSuccess.value = true;
-        setTimeout(() => showSaveSuccess.value = false, 2000);
+    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) return;
+    const res = await (window as any).electronAPI.project.save({
+        projectPath: currentFilePath.value,
+        expectedRevision: projectRevision.value
+    });
+    if (!res?.success || !res?.data) {
+        alert(getErrorMessage(res, '保存失败，请稍后重试。'));
+        return;
     }
+    applyProjectState(res.data);
+    showSaveSuccess.value = true;
+    setTimeout(() => showSaveSuccess.value = false, 2000);
 };
 
 const handleImportClick = async () => {
@@ -485,20 +627,8 @@ const handleImportClick = async () => {
             const dirPath = await (window as any).electronAPI.selectDirectory();
             if (!dirPath) return;
 
-            const data = await (window as any).electronAPI.loadProject(dirPath);
-            if (!data) {
-                alert("该文件夹下未找到 project.json 项目文件。");
-                return;
-            }
-
-            if (data.nodes) {
-                nodes.value = data.nodes;
-                projectMode.value = data.projectMode || 'LONG';
-                selectedId.value = data.lastOpenedId || 'story-root';
-                currentFilePath.value = dirPath;
-            } else {
-                alert("无效的项目文件格式。");
-            }
+            currentFilePath.value = dirPath;
+            await syncProjectStateFromMain(dirPath);
         } catch (err) {
             console.error("Import failed:", err);
             alert("导入失败，文件可能已损坏。");
@@ -510,12 +640,49 @@ const handleFileImport = (event: Event) => {
     alert("请使用‘打开文件夹’功能加载新版项目结构。");
 };
 
+// --- Confirm Modal Actions ---
+const closeConfirmModal = () => {
+    confirmModalState.value.isOpen = false;
+};
+
+const handleConfirmAction = async () => {
+    if (confirmModalState.value.confirmAction) {
+        await confirmModalState.value.confirmAction();
+    }
+    closeConfirmModal();
+};
+
 // --- Tree Actions ---
 const handleSelect = (id: string) => {
-    selectedId.value = id;
-    if (currentFilePath.value && !currentFilePath.value.includes('untitled.json')) {
-        (window as any).electronAPI.saveProject(currentFilePath.value, { lastOpenedId: id });
+    if (!id) {
+        selectedId.value = '';
+        return;
     }
+    if (!nodes.value[id]) return;
+    if (id === selectedId.value) return;
+
+    selectedId.value = id;
+    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) return;
+
+    if (syncSelectedNodeTimer) {
+        clearTimeout(syncSelectedNodeTimer);
+        syncSelectedNodeTimer = null;
+    }
+
+    syncSelectedNodeTimer = setTimeout(() => {
+        const projectPath = currentFilePath.value;
+        if (!projectPath || projectPath.includes('untitled.json')) return;
+        (window as any).electronAPI.project.selectNode({
+            projectPath,
+            nodeId: id
+        }).then((res: any) => {
+            if (res?.success && res?.data && Number.isInteger(res.data.revision)) {
+                projectRevision.value = res.data.revision;
+            }
+        }).catch((error: any) => {
+            console.warn('selectNode failed', error);
+        });
+    }, 180);
 };
 
 const handleToggle = (id: string) => {
@@ -528,100 +695,66 @@ const handleToggle = (id: string) => {
     }
 };
 
-const handleAdd = (parentId: string, type: NodeType) => {
-    const newId = `node-${Date.now()}`;
-    const parent = nodes.value[parentId];
-    if (!parent) return;
-
-    const sameTypeCount = parent.children.filter(childId => nodes.value[childId]?.type === type).length;
-    const nextIndex = sameTypeCount + 1;
-
-    let defaultTitle = "未命名";
-    switch (type) {
-        case NodeType.VOLUME: defaultTitle = `第${nextIndex}卷：`; break;
-        case NodeType.SECTION: defaultTitle = `第${nextIndex}篇：`; break;
-        case NodeType.CHAPTER: defaultTitle = `第${nextIndex}章：`; break;
-        case NodeType.SETTING_FOLDER: defaultTitle = `新文件夹 ${nextIndex}`; break;
-        case NodeType.SETTING_ITEM: defaultTitle = `新条目 ${nextIndex}`; break;
-    }
-
-    const newNode: NodeData = {
-        id: newId,
-        type,
-        title: defaultTitle,
-        content: '',
-        summary: '',
+const handleAdd = async (parentId: string, type: NodeType) => {
+    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) return;
+    const res = await (window as any).electronAPI.project.addNode({
+        projectPath: currentFilePath.value,
         parentId,
-        children: []
-    };
-
-    // Update parent
-    parent.children.push(newId);
-    parent.expanded = true;
-
-    // Add new node
-    nodes.value[newId] = newNode;
-
-    if (currentFilePath.value && !currentFilePath.value.includes('untitled.json')) {
-        (window as any).electronAPI.saveProject(currentFilePath.value, { nodes: nodes.value });
+        type,
+        expectedRevision: projectRevision.value
+    });
+    if (!res?.success || !res?.data) {
+        alert(getErrorMessage(res, '新增节点失败。'));
+        return;
     }
-
-    selectedId.value = newId;
+    applyProjectState(res.data);
 };
 
-const handleDelete = (id: string) => {
+const handleDelete = async (id: string) => {
     const nodeToDelete = nodes.value[id];
     if (!nodeToDelete || !nodeToDelete.parentId) {
         alert("不能删除根节点。");
         return;
     }
 
-    if (!confirm("确定要删除此章节/目录吗？关联的文件将被移至回收站。")) {
-        return;
-    }
-
-    const deleteFilesRecursive = async (nodeId: string) => {
-        const node = nodes.value[nodeId];
-        if (!node) return;
-
-        if (node.type === NodeType.CHAPTER) {
-            await FileManager.deleteNodeFile(currentFilePath.value, nodes.value, projectMode.value, nodeId, 'content');
-        }
-
-        if (node.summary && (node.type === NodeType.VOLUME || node.type === NodeType.SECTION || node.type === NodeType.CHAPTER)) {
-            await FileManager.deleteNodeFile(currentFilePath.value, nodes.value, projectMode.value, nodeId, 'outline');
-        }
-
-        if (node.children) {
-            for (const childId of node.children) {
-                await deleteFilesRecursive(childId);
-            }
+    confirmModalState.value = {
+        isOpen: true,
+        title: '删除章节确认',
+        message: `确定要删除“${nodeToDelete.title}”及其所有内容吗？此操作无法撤销。`,
+        confirmLabel: '确认删除',
+        isDestructive: true,
+        confirmAction: async () => {
+             if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) return;
+             const res = await (window as any).electronAPI.project.deleteNode({
+                 projectPath: currentFilePath.value,
+                 nodeId: id,
+                 expectedRevision: projectRevision.value
+             });
+             if (!res?.success || !res?.data) {
+                 alert(getErrorMessage(res, '删除节点失败。'));
+                 return;
+             }
+             applyProjectState(res.data);
         }
     };
-
-    if (currentFilePath.value && !currentFilePath.value.includes('untitled.json')) {
-        deleteFilesRecursive(id).catch(e => console.error("File deletion failed", e));
-    }
-
-    const parentId = nodeToDelete.parentId;
-    const parent = nodes.value[parentId];
-    if (parent) {
-        parent.children = parent.children.filter(childId => childId !== id);
-    }
-
-    const deleteRecursive = (nodeId: string) => {
-        const node = nodes.value[nodeId];
-        if (node && node.children) node.children.forEach(deleteRecursive);
-        delete nodes.value[nodeId];
-    };
-    deleteRecursive(id);
-
-    if (selectedId.value === id) selectedId.value = parentId;
 };
 
-const handleRename = (id: string, newTitle: string) => {
-    if (nodes.value[id]) {
-        nodes.value[id].title = newTitle;
+const handleRename = async (id: string, newTitle: string) => {
+    if (!nodes.value[id]) return;
+    nodes.value[id].title = newTitle;
+    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) return;
+    const res = await (window as any).electronAPI.project.renameNode({
+        projectPath: currentFilePath.value,
+        nodeId: id,
+        title: newTitle,
+        expectedRevision: projectRevision.value
+    });
+    if (!res?.success || !res?.data) {
+        console.warn(getErrorMessage(res, '重命名失败。'));
+        return;
+    }
+    if (Number.isInteger(res.data.revision)) {
+        projectRevision.value = res.data.revision;
     }
 };
 
@@ -630,6 +763,143 @@ const handleChange = (id: string, field: keyof NodeData, value: string) => {
         // @ts-ignore
         nodes.value[id][field] = value;
      }
+};
+
+const handleOpenSplitModal = () => {
+    if (!canSplitCurrentNode.value) return;
+    isSplitModalOpen.value = true;
+    splitError.value = '';
+    splitPreviewChapters.value = [];
+    
+    // Auto generate preview - REMOVED per user request
+    // handleGenerateSplitPreview();
+};
+
+const handleCloseSplitModal = () => {
+    isSplitModalOpen.value = false;
+    isSplitGenerating.value = false;
+    splitError.value = '';
+};
+
+const handleUpdateSplitChapterCount = (count: number) => {
+    const normalized = Math.max(2, Math.min(50, Math.floor(count || 0)));
+    splitChapterCount.value = normalized;
+};
+
+const handleUpdateSplitTitle = (index: number, title: string) => {
+    if (!splitPreviewChapters.value[index]) return;
+    splitPreviewChapters.value[index] = {
+        ...splitPreviewChapters.value[index],
+        title
+    };
+};
+
+const handleGenerateSplitPreview = async () => {
+    if (isSplitGenerating.value) return;
+    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) {
+        splitError.value = '请先创建或打开项目目录后再使用章节拆分。';
+        return;
+    }
+
+    const chapterCount = splitChapterCount.value;
+    if (!Number.isInteger(chapterCount) || chapterCount < 2 || chapterCount > 50) {
+        splitError.value = `${splitTargetLabel.value}数需在 2-50 之间。`;
+        return;
+    }
+
+    const sourceNode = selectedNode.value;
+    const targetType = splitTargetNodeType.value;
+    if (!sourceNode || !targetType) {
+        splitError.value = '当前节点不支持拆分。';
+        return;
+    }
+
+    splitError.value = '';
+    isSplitGenerating.value = true;
+
+    try {
+        const res = await (window as any).electronAPI.project.splitShortPreview({
+            projectPath: currentFilePath.value,
+            sourceNodeId: sourceNode.id,
+            targetNodeType: targetType,
+            chapterCount,
+            modelName: 'gemini-3-flash-preview',
+            temperature: 0.3
+        });
+
+        if (!res?.success) {
+            throw new Error(getErrorMessage(res, '生成章节预览失败，请重试。'));
+        }
+
+        splitPreviewChapters.value = (res.chapters || []) as SplitNodeItem[];
+    } catch (error: any) {
+        splitError.value = error?.message || '生成章节预览失败，请重试。';
+        splitPreviewChapters.value = [];
+    } finally {
+        isSplitGenerating.value = false;
+    }
+};
+
+const executeApplySplit = async () => {
+     try {
+        const sourceNode = selectedNode.value;
+        const targetType = splitTargetNodeType.value;
+        if (!sourceNode || !targetType) {
+            splitError.value = '当前节点不支持拆分。';
+            return;
+        }
+
+        const normalizedChapters = splitPreviewChapters.value.map((item, index) => ({
+            title: (item.title || '').trim() || `第${index + 1}${splitCounterSuffix.value}：`,
+            summary: item.summary || ''
+        }));
+
+        const res = await (window as any).electronAPI.project.applyShortSplit({
+            projectPath: currentFilePath.value,
+            sourceNodeId: sourceNode.id,
+            targetNodeType: targetType,
+            chapters: normalizedChapters,
+            overwriteAll: true, // This should be handled by the confirm modal logic
+            expectedRevision: projectRevision.value
+        });
+
+        if (!res?.success || !res?.data) {
+            throw new Error(getErrorMessage(res, '应用章节拆分失败。'));
+        }
+
+        applyProjectState(res.data);
+        handleCloseSplitModal();
+    } catch (error: any) {
+        splitError.value = error?.message || '未知错误';
+    }
+};
+
+const handleApplySplitChapters = async () => {
+    if (splitPreviewChapters.value.length === 0) {
+        splitError.value = '请先生成章节预览。';
+        return;
+    }
+    if (!currentFilePath.value || currentFilePath.value.includes('untitled.json')) {
+        splitError.value = '请先创建或打开项目目录后再应用。';
+        return;
+    }
+
+    const sourceNode = selectedNode.value;
+    const existingCount = (sourceNode?.children || []).length;
+    
+    if (existingCount > 0) {
+         confirmModalState.value = {
+            isOpen: true,
+            title: '确认覆盖拆分',
+            message: `当前节点下已有 ${existingCount} 个子节点。此操作将删除这些节点并应用新的拆分结果，且无法撤销。是否继续？`,
+            confirmLabel: '覆盖并创建',
+            isDestructive: true,
+            confirmAction: executeApplySplit
+        };
+        return;
+    }
+
+    await executeApplySplit();
 };
 
 const handleStartAiTask = (task: WritingTask) => {

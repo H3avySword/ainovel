@@ -40,7 +40,12 @@ export interface AppConfig {
 }
 
 // AI Task Definitions
-export type TaskType = 'SYNOPSIS' | 'CONTENT' | 'POLISH_SELECTION' | 'POLISH_CHAPTER';
+export type TaskType = 'SYNOPSIS' | 'CONTENT' | 'POLISH_SELECTION' | 'POLISH_CHAPTER' | 'SPLIT_CHAPTERS' | 'SPLIT_CHILDREN';
+
+export interface SplitNodeItem {
+  title: string;
+  summary: string;
+}
 
 export interface WritingTask {
   id: string;

@@ -1,4 +1,6 @@
 
+import json
+
 from fastapi import APIRouter, HTTPException
 from models import ChatRequestShort, NodeType
 from services.llm_service import generate_response
@@ -28,8 +30,12 @@ async def chat_short_novel(request: ChatRequestShort):
         - 创作阶段：小说总纲
         - 小说名：{novel_title}
 
+        故事总纲：
+        {novel_outline}
+
         """.format(
-            novel_title=novel_title or current_node_title
+            novel_title=novel_title or current_node_title,
+            novel_outline=state.novel_outline
         )
         
     elif node.type == NodeType.CHAPTER:
@@ -111,9 +117,59 @@ async def chat_short_novel(request: ChatRequestShort):
              - 只输出润色后的最终文本。
              - 不要解释改动，不要添加任何额外内容。
               
-             <<选中文本开始>>
-             {task.context_data}
-             <<选中文本结束>>
+              <<选中文本开始>>
+              {task.context_data}
+              <<选中文本结束>>
+              """
+        elif task.type in ["SPLIT_CHAPTERS", "SPLIT_CHILDREN"]:
+             chapter_count = ""
+             target_node_type = "CHAPTER"
+             if task.context_data:
+                 try:
+                     context_json = json.loads(task.context_data)
+                     if isinstance(context_json, dict):
+                          value = context_json.get("chapter_count")
+                          if isinstance(value, int) and value > 0:
+                              chapter_count = str(value)
+                          target_type_value = context_json.get("target_node_type")
+                          if isinstance(target_type_value, str) and target_type_value.strip():
+                              target_node_type = target_type_value.strip().upper()
+                 except Exception:
+                     chapter_count = ""
+                     target_node_type = "CHAPTER"
+
+             target_label_map = {
+                 "CHAPTER": "章纲",
+                 "SECTION": "篇纲",
+                 "VOLUME": "卷纲"
+             }
+             counter_suffix_map = {
+                 "CHAPTER": "章",
+                 "SECTION": "篇",
+                 "VOLUME": "卷"
+             }
+             target_label = target_label_map.get(target_node_type, "子纲")
+             counter_suffix = counter_suffix_map.get(target_node_type, "章")
+
+             chapter_count_instruction = f"必须拆分为 {chapter_count} 个{target_label}。" if chapter_count else "数量以用户要求为准。"
+             task_instruction += f"""
+
+             【立即执行】
+             任务类型：当前节点拆分子节点。
+             - 基于当前节点内容，输出 {target_label} 拆分结果。
+             - {chapter_count_instruction}
+
+             输出格式要求（严格遵守）：
+             - 只返回 JSON，不得输出任何解释、前后缀、Markdown、代码块标记。
+             - 标题编号统一使用阿拉伯数字格式（例如：第1{counter_suffix}：...、第2{counter_suffix}：...）。
+             - JSON 必须为以下结构：
+             {{
+               "chapters": [
+                 {{"title": "第1{counter_suffix}：...", "summary": "..."}},
+                 {{"title": "第2{counter_suffix}：...", "summary": "..."}}
+               ]
+             }}
+             - 每个对象必须包含 title 和 summary 两个字符串字段。
              """
 
     full_system_instruction = f"{base_instruction}\n\n{node_instruction}\n\n{task_instruction}"

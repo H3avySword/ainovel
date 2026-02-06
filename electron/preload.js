@@ -5,27 +5,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     maximize: () => ipcRenderer.send('window-maximize'),
     close: () => ipcRenderer.send('window-close'),
 
-    // File/Project
-    showSaveDialog: (defaultName) => ipcRenderer.invoke('show-save-dialog', defaultName),
-    saveFile: (path, content) => ipcRenderer.invoke('save-file', path, content),
+    // Project bootstrap
     selectDirectory: () => ipcRenderer.invoke('select-directory'),
-    saveProject: (path, content) => ipcRenderer.invoke('save-project', path, content),
-    saveProjectMeta: (path, content) => ipcRenderer.invoke('save-project-meta', path, content), // [NEW]
-    loadProject: (path) => ipcRenderer.invoke('load-project', path),
     getLastProject: () => ipcRenderer.invoke('get-last-project'),
-
-    // File System Operations [NEW]
-    readFileContent: (path) => ipcRenderer.invoke('read-file-content', path),
-    saveFileContent: (path, content) => ipcRenderer.invoke('save-file-content', path, content),
-    ensureDirectory: (path) => ipcRenderer.invoke('ensure-directory', path),
-    moveToTrash: (path, projectRoot) => ipcRenderer.invoke('move-to-trash', path, projectRoot),
-    pathJoin: (...args) => ipcRenderer.invoke('path-join', ...args), // [NEW]
-
-    // Node Operations
-    loadNodeContent: (projectPath, nodes, mode, nodeId, fileType) => ipcRenderer.invoke('load-node-content', { projectPath, nodes, mode, nodeId, fileType }),
-    saveNodeContent: (projectPath, nodes, mode, nodeId, content, fileType) => ipcRenderer.invoke('save-node-content', { projectPath, nodes, mode, nodeId, content, fileType }),
-    deleteNodeFile: (projectPath, nodes, mode, nodeId, fileType) => ipcRenderer.invoke('delete-node-file', { projectPath, nodes, mode, nodeId, fileType }),
     createProject: (dirPath, nodes, mode) => ipcRenderer.invoke('create-project', dirPath, nodes, mode),
+
+    // Project commands
+    project: {
+        getState: (payload) => ipcRenderer.invoke('project:get-state', payload),
+        selectNode: (payload) => ipcRenderer.invoke('project:select-node', payload),
+        loadNodeField: (payload) => ipcRenderer.invoke('project:load-node-field', payload),
+        updateNode: (payload) => ipcRenderer.invoke('project:update-node', payload),
+        save: (payload) => ipcRenderer.invoke('project:save', payload),
+        addNode: (payload) => ipcRenderer.invoke('project:add-node', payload),
+        renameNode: (payload) => ipcRenderer.invoke('project:rename-node', payload),
+        deleteNode: (payload) => ipcRenderer.invoke('project:delete-node', payload),
+        splitShortPreview: (payload) => ipcRenderer.invoke('project:split-short-preview', payload),
+        applyShortSplit: (payload) => ipcRenderer.invoke('project:apply-short-split', payload)
+    },
 
     // App Config & Lifecycle
     getAppConfig: () => ipcRenderer.invoke('get-app-config'),
@@ -34,6 +31,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('backend-ready', subscription);
         return () => {
             ipcRenderer.removeListener('backend-ready', subscription);
+        };
+    },
+    onProjectStateChanged: (callback) => {
+        const subscription = (event, payload) => callback(payload);
+        ipcRenderer.on('project:state-changed', subscription);
+        return () => {
+            ipcRenderer.removeListener('project:state-changed', subscription);
         };
     }
 });

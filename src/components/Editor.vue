@@ -88,23 +88,35 @@
         </div>
 
         <!-- Summary Section -->
-        <div class="group relative">
-          <button
-            @click="showSummary = !showSummary"
-            class="flex items-center gap-2 text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide transition-colors"
-          >
-            <ChevronDown v-if="showSummary" :size="14" />
-            <ChevronRight v-else :size="14" />
-            {{ isContentNode ? "Synopsis / Notes" : "Outline / Description" }}
-          </button>
-          
-          <button 
-            @click.stop="startSynopsisGen"
-            class="absolute right-0 top-0 p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-            title="Generate with AI"
-          >
-            <Wand2 :size="16" />
-          </button>
+        <div class="group">
+          <div class="flex items-center justify-between mb-3 relative">
+            <button
+              @click="showSummary = !showSummary"
+              class="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wide transition-colors"
+            >
+              <ChevronDown v-if="showSummary" :size="14" />
+              <ChevronRight v-else :size="14" />
+              {{ isContentNode ? "Synopsis / Notes" : "Outline / Description" }}
+            </button>
+
+            <div class="flex items-center gap-1">
+              <button
+                v-if="canSplitNode"
+                @click.stop="emit('open-split-modal')"
+                class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm transition-all"
+                :title="`一键拆分${splitTargetLabel}：按目标数量自动生成${splitTargetLabel}列表`"
+              >
+                <ListTree :size="16" />
+              </button>
+              <button
+                @click.stop="startSynopsisGen"
+                class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm transition-all"
+                title="Generate with AI"
+              >
+                <Wand2 :size="16" />
+              </button>
+            </div>
+          </div>
 
           <div v-if="showSummary">
             <div
@@ -126,9 +138,10 @@
           </div>
         </div>
 
+
         <!-- Main Content -->
         <div v-if="isContentNode" class="group animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div class="flex justify-between items-center mb-2">
+          <div class="flex justify-between items-center mb-3 relative">
             <button
               @click="showContent = !showContent"
               class="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wide transition-colors"
@@ -137,23 +150,23 @@
               <ChevronRight v-else :size="14" />
               {{ node.type === NodeType.SETTING_ITEM ? "Detailed Description" : "Story Content" }}
             </button>
-            <div class="text-[10px] text-slate-400 font-mono bg-slate-100 px-2 py-0.5 rounded-full select-none">
-              {{ (node.content || '').length }} Words
+            
+            <div class="flex items-center gap-1">
+              <button
+                 @click.stop="startContentGen"
+                 class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm transition-all"
+                 title="AI Continue Writing"
+              >
+                 <Wand2 :size="16" />
+              </button>
             </div>
           </div>
-          
-          <!-- Empty Content AI Prompt -->
-          <div v-if="!node.content && showContent && !contentPreview" class="mb-4">
-             <button 
-                @click="startContentGen"
-                class="w-full py-3 border-2 border-dashed border-indigo-200 rounded-xl text-indigo-400 font-medium hover:bg-indigo-50 hover:border-indigo-300 transition-all flex items-center justify-center gap-2"
-             >
-                <Wand2 :size="18" />
-                <span>Start writing with AI...</span>
-             </button>
-          </div>
 
-          <div v-if="showContent">
+          <div v-if="showContent" class="relative group/editor">
+            <!-- Floating Word Count -->
+            <div class="absolute top-2 right-2 z-10 text-[10px] text-slate-400 font-mono bg-slate-100/50 backdrop-blur-sm px-2 py-0.5 rounded-full select-none pointer-events-none transition-opacity opacity-50 group-hover/editor:opacity-100">
+               {{ (node.content || '').length }} Words
+            </div>
             <div
               v-if="contentPreview"
               class="prose prose-slate prose-lg max-w-none font-serif prose-headings:font-sans prose-headings:font-bold prose-p:leading-loose prose-blockquote:border-indigo-300 prose-blockquote:bg-indigo-50/30 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic min-h-[600px] cursor-pointer p-4 rounded-xl bg-slate-50/50"
@@ -176,27 +189,58 @@
       </div>
     </div>
   </div>
+
+  <SplitNodeDialog
+    :isOpen="isSplitModalOpen"
+    :isGenerating="isSplitGenerating"
+    :chapterCount="splitChapterCount"
+    :previewChapters="splitPreviewChapters"
+    :error="splitError"
+    :targetLabel="splitTargetLabel"
+    @close="emit('close-split-modal')"
+    @update-chapter-count="(count: number) => emit('update-split-chapter-count', count)"
+    @generate-preview="emit('generate-split-preview')"
+    @update-title="(index: number, title: string) => emit('update-split-title', index, title)"
+    @apply-chapters="emit('apply-split-chapters')"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { NodeData, NodeType } from '../types';
 import { marked } from 'marked';
+import SplitNodeDialog from './SplitNodeDialog.vue';
 import {
   Bold, Italic, Heading1, Heading2, Quote, List, ListOrdered,
   Eye, Pencil, Code, Minus, Type, ChevronDown, ChevronRight,
+  ListTree,
   Wand2, Sparkles
 } from 'lucide-vue-next';
-import { WritingTask } from '../types';
+import { WritingTask, SplitNodeItem, ProjectMode } from '../types';
 
 const props = defineProps<{
   node: NodeData;
+  projectMode: ProjectMode;
+  isSplitModalOpen: boolean;
+  isSplitGenerating: boolean;
+  splitChapterCount: number;
+  splitPreviewChapters: SplitNodeItem[];
+  splitError: string;
+  canSplitNode: boolean;
+  splitTargetLabel: string;
+  splitCounterSuffix: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'change', id: string, field: keyof NodeData, value: string): void;
   (e: 'save', id: string, field: keyof NodeData, value: string): void;
   (e: 'start-ai-task', task: WritingTask): void;
+  (e: 'open-split-modal'): void;
+  (e: 'close-split-modal'): void;
+  (e: 'update-split-chapter-count', count: number): void;
+  (e: 'generate-split-preview'): void;
+  (e: 'update-split-title', index: number, title: string): void;
+  (e: 'apply-split-chapters'): void;
 }>();
 
 // State
@@ -290,6 +334,12 @@ const handleClickOutside = (event: MouseEvent) => {
     if (summaryRef.value && summaryRef.value.contains(target)) return;
     if (contentRef.value && contentRef.value.contains(target)) return;
 
+    // 澶卞幓鐒︾偣鏃惰嚜鍔ㄥ垏鎹㈠埌棰勮妯″紡
+    if (activeField.value === 'summary') {
+        summaryPreview.value = true;
+    } else if (activeField.value === 'content') {
+        contentPreview.value = true;
+    }
     activeField.value = null;
 };
 
@@ -345,3 +395,4 @@ onUnmounted(() => {
     document.removeEventListener('mousedown', handleClickOutside);
 });
 </script>
+

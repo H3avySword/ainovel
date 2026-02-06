@@ -2,7 +2,32 @@ import fs from 'fs/promises';
 import path from 'path';
 import { app } from 'electron';
 
+const writeQueues = new Map();
+
+const enqueueFileWrite = (filePath, writer) => {
+    const previous = writeQueues.get(filePath) || Promise.resolve();
+    const current = previous
+        .catch(() => {})
+        .then(writer)
+        .finally(() => {
+            if (writeQueues.get(filePath) === current) {
+                writeQueues.delete(filePath);
+            }
+        });
+    writeQueues.set(filePath, current);
+    return current;
+};
+
 export default class FileManager {
+
+    static async writeTextAtomic(filePath, content) {
+        return enqueueFileWrite(filePath, async () => {
+            const tempPath = `${filePath}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.writeFile(tempPath, content, 'utf-8');
+            await fs.rename(tempPath, filePath);
+        });
+    }
 
     // --- Path Resolution Logic (Ported from Frontend) ---
 
@@ -147,11 +172,11 @@ export default class FileManager {
             let existingData = {};
             try {
                 const content = await fs.readFile(filePath, 'utf-8');
-                existingData = JSON.parse(content);
+                const trimmed = content.trim();
+                existingData = trimmed ? JSON.parse(trimmed) : {};
             } catch (e) {
-                // If file doesn't exist, we might be creating it, but createProject handles that.
-                // Here we assume it exists or we use defaults.
-                if (e.code !== 'ENOENT') throw e;
+                // 文件不存在或内容损坏时，按空对象继续，避免保存流程中断。
+                if (e.code !== 'ENOENT' && !(e instanceof SyntaxError)) throw e;
             }
 
             // 2. Merge updates
@@ -163,7 +188,7 @@ export default class FileManager {
             };
 
             // 3. Write back
-            await fs.writeFile(filePath, JSON.stringify(projectData, null, 2), 'utf-8');
+            await this.writeTextAtomic(filePath, JSON.stringify(projectData, null, 2));
 
             // 4. Update Last Project Setting
             const settings = await this.loadAppSettings();
@@ -177,6 +202,11 @@ export default class FileManager {
             console.error('Save project failed:', e);
             return { success: false, error: e.message };
         }
+    }
+
+    static async saveProjectMeta(projectRoot, content) {
+        const filePath = path.join(projectRoot, 'project.json');
+        await this.writeTextAtomic(filePath, content);
     }
 
     /**

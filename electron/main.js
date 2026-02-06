@@ -202,8 +202,9 @@ if (app) {
         });
     });
 
-    app.on('window-all-closed', () => {
+    app.on('window-all-closed', async () => {
         console.log('Window all closed. Exiting...');
+        await ProjectService.flushAllPendingPersists();
         if (pythonProcess) {
             console.log('Killing Python process...');
             try {
@@ -236,8 +237,8 @@ if (app) {
 }
 
 import FileManager from './FileManager.js';
-
-// ... (Pre-existing imports like electron, child_process, etc. remain up top, but we will add FileManager import and remove FS if possible later, or just ignore unused imports for now)
+import { registerProjectHandlers } from './ipc/projectHandlers.js';
+import ProjectService from './services/ProjectService.js';
 
 // --------------------------------------------------------------------------
 // 5. IPC Handlers
@@ -254,7 +255,10 @@ if (ipcMain) {
 
     ipcMain.on('window-minimize', () => mainWindow?.minimize());
     ipcMain.on('window-maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize());
-    ipcMain.on('window-close', () => mainWindow?.close());
+    ipcMain.on('window-close', async () => {
+        await ProjectService.flushAllPendingPersists();
+        mainWindow?.close();
+    });
 
     // --- Project Management via FileManager ---
 
@@ -271,67 +275,17 @@ if (ipcMain) {
         return filePaths[0];
     });
 
-    ipcMain.handle('load-project', async (event, dirPath) => {
-        const res = await FileManager.loadProject(dirPath);
-        if (res.success) {
-            return res.data; // Return object directly
-        } else {
-            console.error('Load project failed:', res.error);
-            return null;
-        }
-    });
-
-    ipcMain.handle('save-project', async (event, dirPath, updates) => {
-        // App.tsx sends updates object, not string
-        const res = await FileManager.saveProject(dirPath, updates);
-        return res;
-    });
-
-
-
     ipcMain.handle('create-project', async (event, dirPath, nodes, mode) => {
         return await FileManager.createProject(dirPath, nodes, mode);
     });
 
-    // --- Content / Node Files ---
-
-    // New Handler: Load Node Content
-    ipcMain.handle('load-node-content', async (event, { projectPath, nodes, mode, nodeId, fileType }) => {
-        return await FileManager.loadNodeContent(projectPath, nodes, mode, nodeId, fileType);
-    });
-
-    // New Handler: Save Node Content
-    ipcMain.handle('save-node-content', async (event, { projectPath, nodes, mode, nodeId, content, fileType }) => {
-        return await FileManager.saveNodeContent(projectPath, nodes, mode, nodeId, content, fileType);
-    });
-
-    // New Handler: Delete Node File
-    ipcMain.handle('delete-node-file', async (event, { projectPath, nodes, mode, nodeId, fileType }) => {
-        return await FileManager.deleteNodeFile(projectPath, nodes, mode, nodeId, fileType);
-    });
-
-    // --- Utilities ---
-
-    ipcMain.handle('path-join', (event, ...args) => {
-        return path.join(...args);
-    });
-
-    // Legacy support for manual file reads if used elsewhere (App.tsx currently doesn't seem to use raw read-file-content for anything other than project loading which is now covered)
-    // But keeping it safe.
-    ipcMain.handle('read-file-content', async (event, filePath) => {
-        try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            return { success: true, content };
-        } catch (e) {
-            return { success: false, error: e.message };
+    registerProjectHandlers(ipcMain, {
+        getBackendPort: () => backendPort,
+        getBackendToken: () => backendToken,
+        emitProjectState: (projectPath, data) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('project:state-changed', { projectPath, data });
+            }
         }
-    });
-
-    /* 
-       Helper for generic save if needed.
-       Note: App.tsx doesn't seem to call 'save-file' directly anymore, it calls FileManager services.
-    */
-    ipcMain.handle('ensure-directory', async (event, dirPath) => {
-        return await FileManager.ensureDirectory(dirPath);
     });
 }
