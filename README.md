@@ -1,91 +1,120 @@
-# AI Novel Studio (Nebula Write Local)
+# Nebula Write
 
-AI Novel Studio 是一个本地优先的智能小说写作辅助工具，结合了现代 Web 技术 (Vue 3 + Electron) 和强大的 AI 能力 (Google Gemini)，旨在为创作者提供安全、流畅且智能的写作体验。
+Nebula Write 是一个本地优先的桌面写作工具，使用 Vue 3 + Electron + FastAPI 构建，支持 AI 辅助创作、项目结构化管理与本地文件存储。
 
-## ✨ 核心特性
+## 核心能力
 
-- **🔒 本地优先**: 数据完全存储在本地，保障创作隐私与安全。
-- **🤖 AI 辅助**: 集成 Google Gemini AI，提供续写、润色、灵感激发等功能。
-- **📝 结构化管理**: 
-  - 支持 **长篇 (Long Novel)** 和 **短篇 (Short Novel)** 两种创作模式。
-  - 自动管理卷 (Volume)、章 (Chapter)、节 (Section) 等层级结构。
-- **🌍 世界观设定**: 独立的设定集管理 (角色、地点等)。
-- **📂 智能文件管理**: 基于文件系统的直观管理，支持回收站功能。
+- 本地优先：项目数据保存在本地目录。
+- 多 Provider AI：当前支持
+  - Google AI Studio
+  - OpenAI Compatible
+  - DeepSeek
+- 创作模式：支持长篇/短篇结构化写作。
+- Electron + Python 后端：桌面端启动并管理本地 FastAPI 服务。
 
-## 🛠️ 技术栈
+## 技术栈
 
-- **Frontend**: Vue 3, Vite, Tailwind CSS
-- **Desktop**: Electron
-- **Backend**: Python (FastAPI), Google GenAI SDK
+- 前端：Vue 3, Vite, TypeScript, Tailwind CSS
+- 桌面端：Electron
+- 后端：Python, FastAPI, google-genai, openai
 
-## 🚀 快速开始
+## 环境要求
 
-### 1. 环境要在
+- Node.js LTS
+- Python 3.10+
 
-确保您的系统已安装以下环境：
-- [Node.js](https://nodejs.org/) (推荐 LTS 版本)
-- [Python 3.10+](https://www.python.org/)
-- [Conda](https://docs.conda.io/en/latest/) (推荐用于 Python 环境管理)
-
-### 2. 安装依赖
-
-#### 后端环境 (Python)
+## 安装依赖
 
 ```bash
-# 创建并激活 Conda 环境
-conda create -n ainovel python=3.10
-conda activate ainovel
+# Node 依赖（项目根目录）
+npm install
 
-# 安装 Python 依赖
+# Python 依赖（建议在虚拟环境中）
 pip install -r backend/requirements.txt
 ```
 
-#### 前端环境 (Node.js)
+## Provider 配置
 
-```bash
-# 在项目根目录下运行
-npm install
-```
 
-### 3. 配置
+- 在应用内 AI 设置面板中选择 Provider 并保存 API Key。
+- 可为不同 Provider 分别配置 API Base URL（如 OpenAI Compatible、DeepSeek）。
+- 模型列表、连接状态会随 Provider 分别保存。
+- OpenAI Compatible / DeepSeek 调用已切换为官方 OpenAI SDK（通过 `base_url` 指向兼容端点）。
 
-复制配置文件示例并设置 API Key：
+## 开发运行
 
-```bash
-cp env.example .env.local
-```
-
-打开 `.env.local` 并填入您的 Google Gemini API Key：
-```ini
-GEMINI_API_KEY=your_api_key_here
-```
-
-### 4. 运行项目
-
-开发模式 (同时启动前端和 Electron)：
 ```bash
 npm run dev
 ```
 
-构建生产版本：
+该命令会启动 Vite 与 Electron，并由 Electron 自动拉起后端。
+
+## 构建与打包
+
 ```bash
+# 前端构建（含 TypeScript 检查）
+npm run build
+
+# 构建 Python 后端可执行文件
+npm run backend:build
+
+# 完整桌面应用打包
 npm run electron:build
 ```
 
-## 📂 项目结构
+### 关于 Python 环境（重要）
+
+`backend:build` 当前使用：
+
+```bash
+python -m PyInstaller ...
+```
+
+这表示它会使用“当前终端里的 `python`”。  
+如果你希望使用某个虚拟环境打包，请先激活该环境，再执行 `npm run backend:build` 或 `npm run electron:build`。
+
+## 项目结构
 
 ```text
 localapp/
-├── project.json         # 项目核心索引与元数据
-├── backend/             # Python 后端服务 (AI 接口, 逻辑处理)
-├── electron/            # Electron 主进程代码
-├── src/                 # Vue 前端源代码
-├── data/                # 应用数据 (预设, Regex等)
-└── vector_db/           # 向量数据库 (本地 RAG 支持)
+├── src/                      # Vue 前端
+├── electron/                 # Electron 主进程/预加载/IPC
+├── backend/                  # FastAPI 与 Provider 服务
+├── scripts/                  # 脚本化验证
+├── data/                     # 本地数据（含 provider_settings.json 等）
+└── package.json
 ```
 
-更多详细结构说明请参考 [structure.md](./structure.md)。
+## 常用验证
 
-## 📄 License
+```bash
+npm run build
+python scripts/verify_api.py
+python backend/check_health.py
+```
 
-[MIT](./LICENSE)
+## 版本更新
+
+### 本版本已解决问题
+
+- 多 Provider 支持已落地：`Google AI Studio`、`OpenAI Compatible`、`DeepSeek`。
+- Provider 配置与状态持久化能力已完善（按 Provider 分别保存 API Key 状态、模型列表、连接状态）。
+
+### 待解决问题（按优先级）
+
+1. AI 润色“选中段落插入”问题  
+当前需优先修复选区润色后的插入/替换行为，确保插入位置、覆盖范围与用户选区严格一致。
+2. 短篇总纲拆分的可操作性与提示词优化  
+增加拆分页面对分章节章纲的编辑功能，优化提示词生成更细节的结构化章纲。
+3. ai对话历史拆分功能探讨  
+是否要拆分ai对话历史，对每个节点维护单独的对话记录，以缓解长上下文下的注意力衰退问题
+4. 提示词逻辑拆分与可视化配置  
+将提示词从代码内的硬编码迁出，支持界面化编辑、导入、导出，便于优化提示词。
+5. 设定集能力增强（RAG 或 MCP + 数据库）  
+实现设定一致性、记忆增强与变量状态维护，支持跨章节长期上下文约束。
+6. 实现长篇功能  
+根据优化完毕的短篇逻辑实现长篇功能。
+
+## License
+
+MIT

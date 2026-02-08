@@ -129,19 +129,29 @@
             :activeTask="activeTask"
             @apply-task="handleApplyAiTask"
             @cancel-task="handleCancelAiTask"
+            @config-change="handleAiConfigChange"
           />
         </div>
     </div>
 
     <!-- NEW NOVEL MODAL -->
     <div v-if="showNewModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
-        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/20 animate-in zoom-in-95 duration-200">
+        <div
+          ref="newModalRef"
+          class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/20 animate-in zoom-in-95 duration-200"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-project-title"
+          tabindex="-1"
+          @keydown="handleNewModalKeydown"
+        >
             <div class="px-8 pt-8 pb-6 flex justify-between items-start">
               <div>
-                <h3 class="text-2xl font-bold text-slate-800">新建创作</h3>
+                <h3 id="new-project-title" class="text-2xl font-bold text-slate-800">新建创作</h3>
                 <p class="text-sm text-slate-400 mt-1">请选择作品的结构模式，创建后无法更改模式。</p>
               </div>
               <button
+                ref="newModalCloseBtnRef"
                 @click="showNewModal = false"
                 class="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
                 title="关闭"
@@ -181,7 +191,15 @@
     </div>
     <!-- CONFIRMATION MODAL -->
     <div v-if="confirmModalState.isOpen" class="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/20 backdrop-blur-[2px] animate-in fade-in duration-200">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] p-6 animate-in zoom-in-95 slide-in-from-bottom-2 duration-200 relative border border-white/40">
+        <div
+          ref="confirmModalRef"
+          class="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] p-6 animate-in zoom-in-95 slide-in-from-bottom-2 duration-200 relative border border-white/40"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-modal-title"
+          tabindex="-1"
+          @keydown="handleConfirmModalKeydown"
+        >
             <div class="flex flex-col items-center text-center">
                 <!-- Icon -->
                 <div 
@@ -193,7 +211,7 @@
                 </div>
 
                 <!-- Content -->
-                <h3 class="text-lg font-bold text-slate-800 tracking-tight mb-2">{{ confirmModalState.title }}</h3>
+                <h3 id="confirm-modal-title" class="text-lg font-bold text-slate-800 tracking-tight mb-2">{{ confirmModalState.title }}</h3>
                 <p class="text-sm text-slate-500 leading-relaxed mb-8 px-2">
                     {{ confirmModalState.message }}
                 </p>
@@ -223,8 +241,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { NodeMap, NodeType, ProjectMode, NodeData, AppConfig, WritingTask, SplitNodeItem } from './types';
+import type { ProviderId } from './services/providerConnectionService';
 import TitleBar from './components/TitleBar.vue';
 import TreeSidebar from './components/TreeSidebar.vue';
 import Editor from './components/Editor.vue';
@@ -314,6 +333,8 @@ const showNewModal = ref(false);
 const currentFilePath = ref("Documents/NebulaWrite/untitled.json");
 const appConfig = ref<AppConfig | null>(null);
 const activeTask = ref<WritingTask | null>(null);
+const currentAiProvider = ref<ProviderId>('google');
+const currentAiModel = ref('gemini-3-flash-preview');
 const isSplitModalOpen = ref(false);
 const isSplitGenerating = ref(false);
 const splitChapterCount = ref(8);
@@ -335,6 +356,10 @@ const confirmModalState = ref({
 });
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const newModalRef = ref<HTMLDivElement | null>(null);
+const newModalCloseBtnRef = ref<HTMLButtonElement | null>(null);
+const confirmModalRef = ref<HTMLDivElement | null>(null);
+const lastFocusedElementBeforeModal = ref<HTMLElement | null>(null);
 
 const selectedNode = computed(() => nodes.value[selectedId.value]);
 
@@ -388,6 +413,76 @@ const splitCounterSuffix = computed(() => {
   if (!targetType) return '';
   return splitCounterSuffixMap[targetType] || '';
 });
+
+const getFocusableElements = (container: HTMLElement): HTMLElement[] => {
+  const selectors = [
+    'button:not([disabled])',
+    '[href]',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+  ].join(',');
+
+  return Array.from(container.querySelectorAll<HTMLElement>(selectors))
+    .filter((element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+};
+
+const trapFocus = (event: KeyboardEvent, container: HTMLElement | null) => {
+  if (event.key !== 'Tab' || !container) return;
+
+  const focusables = getFocusableElements(container);
+  if (focusables.length === 0) {
+    event.preventDefault();
+    container.focus();
+    return;
+  }
+
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+
+  if (event.shiftKey) {
+    if (active === first || !container.contains(active)) {
+      event.preventDefault();
+      last.focus();
+    }
+    return;
+  }
+
+  if (active === last || !container.contains(active)) {
+    event.preventDefault();
+    first.focus();
+  }
+};
+
+const captureFocusBeforeModalOpen = () => {
+  if (!lastFocusedElementBeforeModal.value) {
+    lastFocusedElementBeforeModal.value = document.activeElement as HTMLElement | null;
+  }
+};
+
+const restoreFocusAfterModalClose = () => {
+  if (showNewModal.value || confirmModalState.value.isOpen) return;
+  lastFocusedElementBeforeModal.value?.focus?.();
+  lastFocusedElementBeforeModal.value = null;
+};
+
+const handleNewModalKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    showNewModal.value = false;
+    return;
+  }
+  trapFocus(event, newModalRef.value);
+};
+
+const handleConfirmModalKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    closeConfirmModal();
+    return;
+  }
+  trapFocus(event, confirmModalRef.value);
+};
 
 const getErrorMessage = (res: any, fallback: string) => {
   if (!res) return fallback;
@@ -476,6 +571,31 @@ onUnmounted(() => {
         clearTimeout(syncSelectedNodeTimer);
         syncSelectedNodeTimer = null;
     }
+});
+
+watch(showNewModal, async (open) => {
+  if (open) {
+    captureFocusBeforeModalOpen();
+    await nextTick();
+    newModalCloseBtnRef.value?.focus();
+    return;
+  }
+  restoreFocusAfterModalClose();
+});
+
+watch(() => confirmModalState.value.isOpen, async (open) => {
+  if (open) {
+    captureFocusBeforeModalOpen();
+    await nextTick();
+    const focusables = confirmModalRef.value ? getFocusableElements(confirmModalRef.value) : [];
+    if (focusables.length > 0) {
+      focusables[0].focus();
+    } else {
+      confirmModalRef.value?.focus();
+    }
+    return;
+  }
+  restoreFocusAfterModalClose();
 });
 
 // --- Content Loading Logic ---
@@ -823,7 +943,8 @@ const handleGenerateSplitPreview = async () => {
             sourceNodeId: sourceNode.id,
             targetNodeType: targetType,
             chapterCount,
-            modelName: 'gemini-3-flash-preview',
+            provider: currentAiProvider.value,
+            modelName: currentAiModel.value,
             temperature: 0.3
         });
 
@@ -926,6 +1047,11 @@ const handleApplyAiTask = (content: string) => {
 const handleCancelAiTask = () => {
     activeTask.value = null;
     // Don't close sidebar automatically to allow user to continue chatting if they want
+};
+
+const handleAiConfigChange = (payload: { provider: ProviderId; model: string }) => {
+    currentAiProvider.value = payload.provider;
+    currentAiModel.value = payload.model || '';
 };
 
 

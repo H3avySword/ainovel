@@ -26,6 +26,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // App Config & Lifecycle
     getAppConfig: () => ipcRenderer.invoke('get-app-config'),
+    providerCache: {
+        get: (providerKey) => ipcRenderer.invoke('provider-cache:get', providerKey),
+        set: (providerKey, payload) => ipcRenderer.invoke('provider-cache:set', providerKey, payload),
+        clear: (providerKey) => ipcRenderer.invoke('provider-cache:clear', providerKey)
+    },
+    providerSelection: {
+        get: () => ipcRenderer.invoke('provider-selection:get'),
+        set: (providerKey) => ipcRenderer.invoke('provider-selection:set', providerKey)
+    },
     onBackendReady: (callback) => {
         const subscription = (event, ...args) => callback(...args);
         ipcRenderer.on('backend-ready', subscription);

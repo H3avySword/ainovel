@@ -1,51 +1,44 @@
+﻿import sys
+from typing import Iterable
 
-import os
-from pathlib import Path
-from dotenv import load_dotenv
 from google import genai
-import sys
 
-# 1. Load Environment Variables
-env_path = Path(__file__).parent.parent / '.env.local'
-print(f"Loading env from: {env_path}")
-load_dotenv(env_path)
+from services.providers import google_provider
 
-api_key = os.environ.get("GEMINI_API_KEY")
 
+def iter_first_model_name(client: genai.Client) -> str:
+    models: Iterable = client.models.list(config={"page_size": 1})
+    for model in models:
+        return str(getattr(model, "name", "") or "").strip()
+    return ""
+
+
+api_key = google_provider.get_current_api_key()
 if not api_key:
-    print("❌ Critical Error: GEMINI_API_KEY not found in environment variables.")
-    print("Please check e:/games/novel/longnovel/localapp/.env.local")
+    print("Critical Error: Google provider API key is not configured.")
+    print("Open app settings and save API key first.")
     sys.exit(1)
 
-print(f"✅ API Key found: {api_key[:8]}...{api_key[-4:]}")
+print(f"API Key found: {api_key[:8]}...{api_key[-4:]}")
 
-
-# 2. Check Proxy
-print(f"HTTP_PROXY: {os.environ.get('HTTP_PROXY')}")
-print(f"HTTPS_PROXY: {os.environ.get('HTTPS_PROXY')}")
-
-# 3. Initialize Client
 try:
-    print("Initializing Gemini Client...")
+    print("Initializing Gemini client...")
     client = genai.Client(api_key=api_key)
-    
-    # Try listing models to check connectivity
+
     print("Attempting to list models...")
-    for m in client.models.list(config={"page_size": 1}):
-        print(f"Found model: {m.name}")
-        break
-    
-    model_name = "gemini-3-flash-preview"
+    first_model_name = iter_first_model_name(client)
+    if first_model_name:
+        print(f"Found model: {first_model_name}")
+
+    model_name = google_provider.get_status().get("selected_model") or "gemini-3-flash-preview"
     print(f"Creating chat with model: {model_name}")
     chat = client.chats.create(model=model_name)
-    
+
     print("Sending test message...")
     response = chat.send_message("Hello")
-    
-    print("\n✅ API Response Received:")
+
+    print("\nAPI response received:")
     print(response.text)
-
-except Exception as e:
-    print(f"\n❌ API Request Failed!")
-    print(f"Error Details: {e}")
-
+except Exception as error:
+    print("\nAPI request failed.")
+    print(f"Error details: {error}")

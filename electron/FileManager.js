@@ -18,6 +18,13 @@ const enqueueFileWrite = (filePath, writer) => {
     return current;
 };
 
+const writeFileAtomic = async (filePath, content) => {
+    const tempPath = `${filePath}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(tempPath, content, 'utf-8');
+    await fs.rename(tempPath, filePath);
+};
+
 export default class FileManager {
 
     static async writeTextAtomic(filePath, content) {
@@ -110,22 +117,43 @@ export default class FileManager {
 
     // --- Helper: Settings Management ---
 
-    static async loadAppSettings() {
+    static getAppSettingsPath() {
         const userDataPath = app.getPath('userData');
-        const settingsFile = path.join(userDataPath, 'settings.json');
+        return path.join(userDataPath, 'settings.json');
+    }
+
+    static async loadAppSettings() {
+        const settingsFile = this.getAppSettingsPath();
         try {
             const data = await fs.readFile(settingsFile, 'utf-8');
-            return JSON.parse(data);
+            const parsed = JSON.parse(data);
+            return parsed && typeof parsed === 'object' ? parsed : {};
         } catch (e) {
             return {};
         }
     }
 
+    static async updateAppSettings(mutator) {
+        const settingsFile = this.getAppSettingsPath();
+        let result = {};
+        await enqueueFileWrite(settingsFile, async () => {
+            const current = await this.loadAppSettings();
+            const draft = current && typeof current === 'object' ? { ...current } : {};
+            const maybeNext = await mutator(draft);
+            const next = maybeNext && typeof maybeNext === 'object' ? maybeNext : draft;
+            await writeFileAtomic(settingsFile, JSON.stringify(next, null, 2));
+            result = next;
+        });
+        return result;
+    }
+
     static async saveAppSettings(settings) {
-        const userDataPath = app.getPath('userData');
-        const settingsFile = path.join(userDataPath, 'settings.json');
         try {
-            await fs.writeFile(settingsFile, JSON.stringify(settings, null, 2), 'utf-8');
+            const patch = settings && typeof settings === 'object' ? settings : {};
+            await this.updateAppSettings((current) => ({
+                ...current,
+                ...patch
+            }));
         } catch (e) {
             console.error('Failed to save settings:', e);
         }
@@ -147,8 +175,10 @@ export default class FileManager {
             // Update Last Project
             const settings = await this.loadAppSettings();
             if (settings.lastProject !== dirPath) {
-                settings.lastProject = dirPath;
-                await this.saveAppSettings(settings);
+                await this.updateAppSettings((current) => ({
+                    ...current,
+                    lastProject: dirPath
+                }));
             }
 
             return { success: true, data };
@@ -193,8 +223,10 @@ export default class FileManager {
             // 4. Update Last Project Setting
             const settings = await this.loadAppSettings();
             if (settings.lastProject !== dirPath) {
-                settings.lastProject = dirPath;
-                await this.saveAppSettings(settings);
+                await this.updateAppSettings((current) => ({
+                    ...current,
+                    lastProject: dirPath
+                }));
             }
 
             return { success: true };
