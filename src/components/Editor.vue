@@ -63,7 +63,7 @@
     </div>
 
     <!-- Scrollable Content Area -->
-    <div class="flex-1 overflow-y-auto px-8 pb-12 custom-scrollbar">
+    <div ref="editorScrollRef" class="flex-1 overflow-y-auto px-8 pb-12 custom-scrollbar">
       <div class="max-w-3xl mx-auto space-y-8 mt-6">
 
         <!-- Metadata & Title -->
@@ -83,7 +83,7 @@
             @blur="(e) => emitSave('title', (e.target as HTMLInputElement).value)"
             @keydown.enter="(e) => emitSave('title', (e.target as HTMLInputElement).value)"
             :placeholder="node.type === NodeType.ROOT ? 'Novel Title' : 'Untitled'"
-            class="w-full text-4xl font-bold text-slate-800 placeholder-slate-200 border-none outline-none bg-transparent leading-tight font-serif"
+            class="w-full text-4xl font-bold text-slate-800 placeholder-slate-200 border-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 rounded-lg bg-transparent leading-tight font-serif"
           />
         </div>
 
@@ -121,17 +121,20 @@
           <div v-if="showSummary">
             <div
               v-if="summaryPreview"
+              ref="summaryPreviewRef"
               class="h-64 overflow-y-auto custom-scrollbar p-6 prose prose-sm prose-slate max-w-none text-slate-600 font-sans cursor-pointer bg-slate-50 rounded-xl border-2 border-transparent"
-              @click="summaryPreview = false; activeField = 'summary'"
+              @scroll="handlePreviewScroll('summary')"
+              @click="openEditorField('summary')"
               v-html="getPreviewHtml(node.summary || '')"
             ></div>
             <textarea
               v-else
               ref="summaryRef"
               :value="node.summary || ''"
-              @focus="activeField = 'summary'"
-              @input="(e) => emitChange('summary', (e.target as HTMLTextAreaElement).value)"
-              @blur="(e) => emitSave('summary', (e.target as HTMLTextAreaElement).value)"
+              @focus="handleEditorFocus('summary')"
+              @scroll="handleEditorScroll('summary')"
+              @input="(e) => handleEditorInput('summary', (e.target as HTMLTextAreaElement).value)"
+              @blur="(e) => handleEditorBlur('summary', (e.target as HTMLTextAreaElement).value)"
               :placeholder="isContentNode ? 'Briefly describe this entry...' : 'Write your outline here...'"
               class="w-full h-64 custom-scrollbar p-4 rounded-xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-100 focus:ring-4 focus:ring-indigo-50/30 outline-none transition-all resize-none text-slate-600 text-sm leading-relaxed"
             ></textarea>
@@ -169,17 +172,20 @@
             </div>
             <div
               v-if="contentPreview"
-              class="prose prose-slate prose-lg max-w-none font-serif prose-headings:font-sans prose-headings:font-bold prose-p:leading-loose prose-blockquote:border-indigo-300 prose-blockquote:bg-indigo-50/30 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic min-h-[600px] cursor-pointer p-4 rounded-xl bg-slate-50/50"
-              @click="contentPreview = false; activeField = 'content'"
+              ref="contentPreviewRef"
+              class="prose prose-slate prose-lg max-w-none font-serif prose-headings:font-sans prose-headings:font-bold prose-p:leading-loose prose-blockquote:border-indigo-300 prose-blockquote:bg-indigo-50/30 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic h-[600px] overflow-y-auto custom-scrollbar cursor-pointer p-4 rounded-xl bg-slate-50/50"
+              @scroll="handlePreviewScroll('content')"
+              @click="openEditorField('content')"
               v-html="getPreviewHtml(node.content || '')"
             ></div>
             <textarea
               v-else
               ref="contentRef"
               :value="node.content || ''"
-              @focus="activeField = 'content'"
-              @input="(e) => emitChange('content', (e.target as HTMLTextAreaElement).value)"
-              @blur="(e) => emitSave('content', (e.target as HTMLTextAreaElement).value)"
+              @focus="handleEditorFocus('content')"
+              @scroll="handleEditorScroll('content')"
+              @input="(e) => handleEditorInput('content', (e.target as HTMLTextAreaElement).value)"
+              @blur="(e) => handleEditorBlur('content', (e.target as HTMLTextAreaElement).value)"
               :placeholder="node.type === NodeType.SETTING_ITEM ? 'Enter full setting details...' : 'Start writing your story...'"
               class="w-full min-h-[600px] p-4 rounded-xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-100 focus:ring-4 focus:ring-indigo-50/30 outline-none transition-all resize-none text-slate-800 text-lg leading-loose font-serif placeholder-slate-300"
             ></textarea>
@@ -206,7 +212,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { NodeData, NodeType } from '../types';
 import { marked } from 'marked';
 import SplitNodeDialog from './SplitNodeDialog.vue';
@@ -252,7 +258,21 @@ const contentPreview = ref(false);
 
 const summaryRef = ref<HTMLTextAreaElement | null>(null);
 const contentRef = ref<HTMLTextAreaElement | null>(null);
+const summaryPreviewRef = ref<HTMLDivElement | null>(null);
+const contentPreviewRef = ref<HTMLDivElement | null>(null);
 const toolbarRef = ref<HTMLDivElement | null>(null);
+const editorScrollRef = ref<HTMLDivElement | null>(null);
+
+type ActiveField = 'summary' | 'content';
+type ScrollMode = 'edit' | 'preview';
+const scrollRatios = ref<Record<ActiveField, number>>({
+  summary: 0,
+  content: 0,
+});
+const isRestoringScroll = ref<Record<ActiveField, boolean>>({
+  summary: false,
+  content: false,
+});
 
 const getTypeLabel = (type: NodeType) => {
     switch (type) {
@@ -269,6 +289,130 @@ const getTypeLabel = (type: NodeType) => {
 
 const isContentNode = computed(() => props.node.type === NodeType.CHAPTER || props.node.type === NodeType.SETTING_ITEM);
 const isPreviewingCurrent = computed(() => activeField.value === 'summary' ? summaryPreview.value : contentPreview.value);
+
+const getTextareaByField = (field: ActiveField) => {
+    return field === 'summary' ? summaryRef.value : contentRef.value;
+};
+
+const getPreviewScrollElementByField = (field: ActiveField) => {
+    return field === 'summary' ? summaryPreviewRef.value : contentPreviewRef.value;
+};
+
+const clamp = (value: number, min: number, max: number) => {
+    return Math.max(min, Math.min(max, value));
+};
+
+const getScrollElement = (field: ActiveField, mode: ScrollMode): HTMLElement | null => {
+    if (mode === 'edit') {
+        return getTextareaByField(field);
+    }
+    return getPreviewScrollElementByField(field);
+};
+
+const readScrollRatio = (element: HTMLElement | null): number | null => {
+    if (!element || !element.isConnected) {
+        return null;
+    }
+    if (element.clientHeight <= 0 || element.scrollHeight <= 0) {
+        return null;
+    }
+    const maxScroll = element.scrollHeight - element.clientHeight;
+    if (maxScroll <= 0) {
+        return 0;
+    }
+    return clamp(element.scrollTop / maxScroll, 0, 1);
+};
+
+const applyScrollRatio = (element: HTMLElement | null, ratio: number) => {
+    if (!element) {
+        return;
+    }
+    const maxScroll = element.scrollHeight - element.clientHeight;
+    if (maxScroll <= 0) {
+        element.scrollTop = 0;
+        return;
+    }
+    element.scrollTop = clamp(ratio, 0, 1) * maxScroll;
+};
+
+const captureRatio = (field: ActiveField, mode: ScrollMode, options: { force?: boolean } = {}) => {
+    if (!options.force && isRestoringScroll.value[field]) {
+        return;
+    }
+    const element = getScrollElement(field, mode);
+    const ratio = readScrollRatio(element);
+    if (ratio === null) {
+        return;
+    }
+    scrollRatios.value[field] = ratio;
+};
+
+const restoreRatio = async (field: ActiveField, mode: ScrollMode, shouldFocus = false) => {
+    isRestoringScroll.value[field] = true;
+    await nextTick();
+    const ratio = scrollRatios.value[field];
+    const applyRatio = () => {
+        applyScrollRatio(getScrollElement(field, mode), ratio);
+    };
+    const finalizeRestore = () => {
+        isRestoringScroll.value[field] = false;
+        captureRatio(field, mode, { force: true });
+    };
+
+    if (shouldFocus && mode === 'edit') {
+        const textarea = getTextareaByField(field);
+        if (textarea) {
+            try {
+                textarea.focus({ preventScroll: true });
+            } catch {
+                textarea.focus();
+            }
+        }
+    }
+
+    applyRatio();
+    // Multiple passes avoid focus/layout side effects forcing scrollTop back to 0.
+    requestAnimationFrame(() => {
+        applyRatio();
+        requestAnimationFrame(() => {
+            applyRatio();
+            setTimeout(finalizeRestore, 0);
+        });
+    });
+};
+
+const openEditorField = (field: ActiveField) => {
+    captureRatio(field, 'preview');
+    if (field === 'summary') {
+        summaryPreview.value = false;
+    } else {
+        contentPreview.value = false;
+    }
+    activeField.value = field;
+    void restoreRatio(field, 'edit', true);
+};
+
+const handleEditorFocus = (field: ActiveField) => {
+    activeField.value = field;
+};
+
+const handleEditorScroll = (field: ActiveField) => {
+    captureRatio(field, 'edit');
+};
+
+const handlePreviewScroll = (field: ActiveField) => {
+    captureRatio(field, 'preview');
+};
+
+const handleEditorInput = (field: ActiveField, value: string) => {
+    emitChange(field, value);
+    requestAnimationFrame(() => captureRatio(field, 'edit'));
+};
+
+const handleEditorBlur = (field: ActiveField, value: string) => {
+    captureRatio(field, 'edit');
+    emitSave(field, value);
+};
 
 const emitChange = (field: keyof NodeData, value: string) => {
     emit('change', props.node.id, field, value);
@@ -310,18 +454,35 @@ const insertMarkdown = (prefix: string, suffix: string = '') => {
 };
 
 const setPreviewMode = (mode: 'edit' | 'preview') => {
-    const preview = mode === 'preview';
-    if (activeField.value === 'summary') {
-        summaryPreview.value = preview;
-    } else if (activeField.value === 'content') {
-        contentPreview.value = preview;
+    const field = activeField.value;
+    if (!field) return;
+    const toPreview = mode === 'preview';
+
+    if (toPreview) {
+        captureRatio(field, 'edit');
+        if (field === 'summary') {
+            summaryPreview.value = true;
+        } else {
+            contentPreview.value = true;
+        }
+        void restoreRatio(field, 'preview');
+        return;
     }
+
+    captureRatio(field, 'preview');
+    if (field === 'summary') {
+        summaryPreview.value = false;
+    } else {
+        contentPreview.value = false;
+    }
+    void restoreRatio(field, 'edit', true);
 };
 
 const getPreviewHtml = (markdown: string) => {
     try {
         if (!markdown) return '<p class="text-slate-300 italic">Empty...</p>';
-        return marked.parse(markdown);
+        const raw = marked.parse(markdown);
+        return typeof raw === 'string' ? raw : String(raw);
     } catch (e) {
         return 'Error rendering markdown';
     }
@@ -336,9 +497,19 @@ const handleClickOutside = (event: MouseEvent) => {
 
     // 澶卞幓鐒︾偣鏃惰嚜鍔ㄥ垏鎹㈠埌棰勮妯″紡
     if (activeField.value === 'summary') {
-        summaryPreview.value = true;
+        const sourceMode: ScrollMode = summaryPreview.value ? 'preview' : 'edit';
+        captureRatio('summary', sourceMode);
+        if (!summaryPreview.value) {
+            summaryPreview.value = true;
+            void restoreRatio('summary', 'preview');
+        }
     } else if (activeField.value === 'content') {
-        contentPreview.value = true;
+        const sourceMode: ScrollMode = contentPreview.value ? 'preview' : 'edit';
+        captureRatio('content', sourceMode);
+        if (!contentPreview.value) {
+            contentPreview.value = true;
+            void restoreRatio('content', 'preview');
+        }
     }
     activeField.value = null;
 };

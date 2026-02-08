@@ -61,18 +61,21 @@
         <button
           @click="minimize"
           class="h-full px-3 flex items-center justify-center hover:bg-slate-100 text-slate-400 transition-colors"
+          aria-label="Minimize window"
         >
           <Minus :size="14" />
         </button>
         <button
           @click="maximize"
           class="h-full px-3 flex items-center justify-center hover:bg-slate-100 text-slate-400 transition-colors"
+          aria-label="Maximize window"
         >
           <Square :size="10" />
         </button>
         <button
           @click="close"
           class="h-full px-3 flex items-center justify-center hover:bg-red-500 hover:text-white text-slate-400 transition-colors"
+          aria-label="Close window"
         >
           <X :size="14" />
         </button>

@@ -13,14 +13,62 @@
         class="p-1.5 rounded-lg transition-colors"
         :class="isConfigOpen ? 'bg-indigo-600 text-white' : 'hover:bg-indigo-100 text-indigo-400'"
         title="AI 配置"
+        aria-label="Toggle AI settings"
       >
         <Settings :size="16" />
       </button>
     </div>
 
+    <div
+      class="absolute top-[44px] left-0 right-0 z-40 pointer-events-none px-3 flex flex-col items-center gap-2"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <transition-group
+        enter-active-class="transition duration-300 ease-out"
+        enter-from-class="opacity-0 -translate-y-2 scale-95"
+        enter-to-class="opacity-100 translate-y-0 scale-100"
+        leave-active-class="transition duration-200 ease-in"
+        leave-from-class="opacity-100 translate-y-0 scale-100"
+        leave-to-class="opacity-0 -translate-y-2 scale-95"
+        move-class="transition duration-300 ease-out"
+      >
+        <div
+          v-for="notice in notices"
+          :key="notice.id"
+          class="pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-full shadow-lg backdrop-blur-sm shadow-black/5 w-fit max-w-full justify-center"
+          :class="notice.type === 'success'
+            ? 'bg-emerald-500/85 text-white'
+            : notice.type === 'error'
+              ? 'bg-rose-500/85 text-white'
+              : 'bg-indigo-500/85 text-white'"
+        >
+          <CheckCircle2 v-if="notice.type === 'success'" :size="16" class="text-white shrink-0" />
+          <CircleAlert v-else-if="notice.type === 'error'" :size="16" class="text-white shrink-0" />
+          <Info v-else :size="16" class="text-white shrink-0" />
+          
+          <span class="text-xs font-medium truncate">{{ notice.title }}</span>
+          <!-- Optional: show message if it's short, or just title for simplicity as requested 'concise' -->
+          <span v-if="notice.message && notice.message !== notice.title" class="text-xs opacity-90 truncate max-w-[150px] border-l border-white/20 pl-2 ml-1">
+              {{ notice.message }}
+          </span>
+
+          <button
+            class="ml-1 p-0.5 rounded hover:bg-white/20 transition-colors shrink-0"
+            @click="dismissNotice(notice.id)"
+            aria-label="Dismiss notice"
+          >
+            <X :size="14" class="text-white" />
+          </button>
+        </div>
+      </transition-group>
+    </div>
+
     <!-- Config Menu Overlay -->
     <div
       ref="configMenuRef"
+      @mousedown.stop
+      @click.stop
       class="absolute top-[53px] left-0 right-0 bg-white border-b border-indigo-100 shadow-2xl z-30 transition-all duration-300 ease-in-out overflow-hidden"
       :class="isConfigOpen ? 'max-h-[80vh]' : 'max-h-0 border-none'"
     >
@@ -29,76 +77,78 @@
         <!-- Chat Completion Source -->
         <div class="space-y-1.5">
           <label class="text-[11px] font-bold text-slate-800 tracking-tight">Chat Completion Source</label>
-          <div class="relative">
-            <select
-              v-model="source"
-              class="w-full h-9 pl-3 pr-10 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 appearance-none focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
-            >
-              <option>Google AI Studio</option>
-              <option>OpenRouter</option>
-              <option>Local (Ollama)</option>
-            </select>
-            <ChevronDown :size="14" class="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
-          </div>
+          <CustomSelect
+            :model-value="source"
+            @update:model-value="val => source = val"
+            :options="providerOptions.map(o => o.label)"
+          />
         </div>
 
         <!-- API URL -->
-        <div class="space-y-1.5">
+        <div v-if="showApiUrlField" class="space-y-1.5">
             <div class="flex items-center gap-1">
-              <label class="text-[11px] font-bold text-slate-800 tracking-tight">API URL</label>
-              <ChevronDown :size="14" class="text-slate-400" />
+              <label for="chat-api-url-input" class="text-[11px] font-bold text-slate-800 tracking-tight">API URL</label>
             </div>
             <input
+              id="chat-api-url-input"
               type="text"
               placeholder="https://api.example.com/v1"
               v-model="apiUrl"
-              class="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
+              class="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 focus:outline-none focus:border-indigo-400 transition-all"
             />
         </div>
 
         <!-- API Key -->
         <div class="space-y-1.5">
-            <label class="text-[11px] font-bold text-slate-800 tracking-tight">API Key</label>
-            <button
-              @click="handleOpenKeySelector"
-              class="w-full group flex items-center justify-between h-9 px-3 bg-slate-50 border border-slate-200 rounded hover:border-indigo-300 transition-all"
-            >
-              <div class="flex items-center gap-2">
-                <CheckCircle2 :size="14" class="text-indigo-500" />
-                <span class="text-[11px] text-slate-500 italic">Key saved (Managed by system)</span>
-              </div>
-              <Key :size="14" class="text-slate-400 group-hover:text-indigo-500 transition-colors" />
-            </button>
+            <label for="chat-api-key-input" class="text-[11px] font-bold text-slate-800 tracking-tight">API Key</label>
+            <div class="relative w-full">
+                <input
+                  id="chat-api-key-input"
+                  v-model="apiKeyInput"
+                  type="password"
+                  :placeholder="apiKeyConfigured ? `Current: ${apiKeyMasked}` : apiKeyPlaceholder"
+                  class="w-full h-9 pl-3 pr-9 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 focus:outline-none focus:border-indigo-400 transition-all"
+                />
+                <button
+                  @mousedown.stop
+                  @click.stop="handleSaveApiKey"
+                  :disabled="isSavingApiKey || !apiKeyInput.trim() || !isProviderSupported"
+                  class="absolute right-1 top-1 bottom-1 w-7 rounded-md flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group hover:bg-slate-100 text-slate-400 hover:text-indigo-600"
+                  :title="isSavingApiKey ? 'Saving...' : 'Save API Key'"
+                  aria-label="Save API Key"
+                >
+                  <Loader2 v-if="isSavingApiKey" :size="14" class="text-indigo-500 animate-spin" />
+                  <Save v-else :size="14" class="transition-colors" />
+                </button>
+            </div>
         </div>
 
-        <!-- Model -->
+        <!-- Models -->
         <div class="space-y-1.5">
-            <label class="text-[11px] font-bold text-slate-800 tracking-tight">Model</label>
-            <div class="relative">
-              <select
-                v-model="aiModel"
-                class="w-full h-9 pl-3 pr-10 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 appearance-none focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
-              >
-                <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
-                <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
-                <option value="gemini-2.5-flash-lite-latest">gemini-2.5-flash-lite-latest</option>
-              </select>
-              <ChevronDown :size="14" class="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
-            </div>
+            <label class="text-[11px] font-bold text-slate-800 tracking-tight">Models</label>
+            <CustomSelect
+                :model-value="aiModel"
+                @update:model-value="val => aiModel = val"
+                :options="modelOptions"
+                :disabled="isLoadingModels || !isProviderSupported"
+                :placeholder="isLoadingModels ? 'Loading models...' : (modelOptions.length === 0 ? 'No models available' : 'Select a model')"
+            />
         </div>
 
         <!-- Footer Buttons -->
         <div class="flex gap-2 pt-2 pb-1">
             <button
-              @click="isConfigOpen = false"
-              class="flex-1 h-8 bg-indigo-600 text-white text-[11px] font-bold rounded hover:bg-indigo-700 transition-colors"
+              @click="handleConnect"
+              :disabled="isConnecting || !isProviderSupported"
+              class="group flex-1 h-8 rounded-lg bg-indigo-600 text-white text-[11px] font-bold tracking-wide shadow-sm shadow-indigo-200/60 hover:bg-indigo-700 hover:shadow-indigo-300/60 transition-all disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
             >
-              Connect
+              <Loader2 v-if="isConnecting" :size="12" class="animate-spin mx-auto" />
+              <span v-else>Connect</span>
             </button>
             <button
               @click="handleTestConnection"
-              :disabled="isTesting"
-              class="flex-1 h-8 border border-slate-200 text-slate-600 text-[11px] font-bold rounded hover:bg-slate-50 transition-colors flex items-center justify-center"
+              :disabled="isTesting || !isProviderSupported"
+              class="flex-1 h-8 rounded-lg border border-slate-200 bg-white text-slate-600 text-[11px] font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200"
             >
               <Loader2 v-if="isTesting" :size="12" class="animate-spin" />
               <span v-else>Test Message</span>
@@ -107,8 +157,13 @@
 
         <!-- Status Line -->
         <div class="flex items-center gap-2 pt-1 border-t border-slate-100">
-            <div class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]"></div>
-            <span class="text-[11px] text-slate-500">Status check bypassed</span>
+            <div
+              class="w-2 h-2 rounded-full transition-all"
+              :class="connectionStatusDotClass"
+            ></div>
+            <span class="text-[11px]" :class="connectionStatusTextClass">
+              {{ connectionStatusText }}
+            </span>
         </div>
 
       </div>
@@ -116,7 +171,6 @@
 
     <!-- Chat Area -->
     <div class="flex-1 overflow-hidden relative flex flex-col">
-      
       <!-- Task Banner -->
       <div v-if="activeTask" class="bg-indigo-50/80 backdrop-blur-sm px-4 py-2 border-b border-indigo-100 flex items-center justify-between absolute top-0 left-0 right-0 z-10">
         <div class="flex items-center gap-2 overflow-hidden">
@@ -197,13 +251,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { ref, watch, onUnmounted, nextTick, computed } from 'vue';
 import {
-  Send, Sparkles, Loader2, Bot, Settings, Key,
-  X, ChevronDown, CheckCircle2, Check
+  Send, Sparkles, Loader2, Bot, Settings,
+  X, ChevronDown, CheckCircle2, CircleAlert, Info, KeyRound, Save
 } from 'lucide-vue-next';
+import CustomSelect from './CustomSelect.vue';
 import { ChatMessage, NodeMap, ProjectMode, AppConfig, WritingTask, TaskType } from '../types';
 import { generateWritingAssistantResponse } from '../services/geminiService';
+import {
+    connectProvider,
+    getAllProviderStatuses,
+    getProviderModels,
+    getProviderStatus,
+    ProviderId,
+    testProvider,
+    updateProviderConfig,
+} from '../services/providerConnectionService';
 
 const props = defineProps<{
     nodes: NodeMap;
@@ -217,25 +281,499 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: 'apply-task', content: string): void;
     (e: 'cancel-task'): void;
+    (e: 'config-change', payload: { provider: ProviderId; model: string }): void;
 }>();
 
 // Chat State
 const messages = ref<ChatMessage[]>([
-    { id: '1', role: 'model', text: "您好！我是您的 AI 创作助手。需要我帮您完善总纲、构思卷纲，还是润色章节内容？" }
+    {
+        id: '1',
+        role: 'model',
+        text: '你好，我是你的 AI 创作助手。可以帮你构思剧情、润色文本和补全章节。',
+    }
 ]);
 const input = ref('');
 const isLoading = ref(false);
 const messagesEndRef = ref<HTMLDivElement | null>(null);
 
 // Configuration State
+type ProviderOption = {
+    label: string;
+    providerId: ProviderId;
+    defaultApiUrl: string;
+    apiKeyPlaceholder: string;
+    fallbackModels: string[];
+};
+
+const providerOptions: ProviderOption[] = [
+    {
+        label: 'Google AI Studio',
+        providerId: 'google',
+        defaultApiUrl: '',
+        apiKeyPlaceholder: 'Paste new Gemini API key',
+        fallbackModels: [
+            'gemini-3-pro-preview',
+            'gemini-3-flash-preview',
+            'gemini-2.5-flash-lite-latest',
+        ],
+    },
+    {
+        label: 'OpenAI Compatible',
+        providerId: 'openai-compatible',
+        defaultApiUrl: 'https://api.openai.com/v1',
+        apiKeyPlaceholder: 'Paste API key',
+        fallbackModels: ['gpt-4o-mini', 'gpt-4.1-mini'],
+    },
+    {
+        label: 'DeepSeek',
+        providerId: 'deepseek',
+        defaultApiUrl: 'https://api.deepseek.com',
+        apiKeyPlaceholder: 'Paste DeepSeek API key',
+        fallbackModels: ['deepseek-chat', 'deepseek-reasoner'],
+    },
+];
+
 const isConfigOpen = ref(false);
-const source = ref('Google AI Studio');
-const apiUrl = ref('');
-const aiModel = ref('gemini-3-pro-preview');
+const source = ref(providerOptions[0].label);
+const apiUrl = ref(providerOptions[0].defaultApiUrl);
+const modelOptions = ref<string[]>([...providerOptions[0].fallbackModels]);
+const aiModel = ref(providerOptions[0].fallbackModels[0]);
 const isTesting = ref(false);
+const apiKeyInput = ref('');
+const apiKeyMasked = ref('');
+const apiKeyConfigured = ref(false);
+const isSavingApiKey = ref(false);
+const isConnecting = ref(false);
+const isLoadingModels = ref(false);
+const connectionState = ref<'idle' | 'connecting' | 'connected' | 'error'>('idle');
+const hasCheckedInitialProviderSetup = ref(false);
+type NoticeType = 'success' | 'error' | 'info';
+type NoticeItem = {
+    id: number;
+    type: NoticeType;
+    title: string;
+    message: string;
+};
+type ProviderCachePayload = {
+    providerId: ProviderId;
+    source: string;
+    connectionState: 'connected' | 'idle' | 'error';
+    models: string[];
+    selectedModel: string;
+    apiKeyMasked: string;
+    apiBaseUrl: string;
+    updatedAt: number;
+};
+
+type ProviderStatusLike = {
+    configured: boolean;
+    masked: string;
+    state?: 'connected' | 'disconnected' | 'error';
+    api_base_url?: string;
+    models?: string[];
+    selected_model?: string;
+};
+
+const notices = ref<NoticeItem[]>([]);
+const noticeTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const providerStatusMemory = new Map<ProviderId, ProviderStatusLike>();
 
 const configMenuRef = ref<HTMLDivElement | null>(null);
 const configToggleRef = ref<HTMLButtonElement | null>(null);
+const selectedProviderOption = computed(() => {
+    return providerOptions.find((option) => option.label === source.value) || providerOptions[0];
+});
+const currentProviderId = computed<ProviderId>(() => selectedProviderOption.value.providerId);
+const isProviderSupported = computed(() => !!selectedProviderOption.value);
+const apiKeyPlaceholder = computed(() => selectedProviderOption.value.apiKeyPlaceholder);
+const showApiUrlField = computed(() => currentProviderId.value === 'openai-compatible');
+
+const findProviderOptionById = (providerId: ProviderId) => {
+    return providerOptions.find((option) => option.providerId === providerId);
+};
+
+const emitConfigChange = () => {
+    emit('config-change', {
+        provider: currentProviderId.value,
+        model: aiModel.value,
+    });
+};
+
+const getProviderSelectionBridge = () => {
+    const bridge = (window as any)?.electronAPI?.providerSelection;
+    if (!bridge?.get || !bridge?.set) {
+        return null;
+    }
+    return bridge;
+};
+
+const readPreferredProvider = async (): Promise<ProviderId | null> => {
+    const bridge = getProviderSelectionBridge();
+    if (!bridge) {
+        return null;
+    }
+
+    try {
+        const rawValue = await bridge.get();
+        if (typeof rawValue !== 'string' || !rawValue.trim()) {
+            return null;
+        }
+        const normalized = rawValue.trim().toLowerCase();
+        if (normalized === 'google' || normalized === 'openai-compatible' || normalized === 'deepseek') {
+            return normalized as ProviderId;
+        }
+        return null;
+    } catch (error) {
+        console.warn('Failed to read preferred provider:', error);
+        return null;
+    }
+};
+
+const persistPreferredProvider = async (providerId: ProviderId) => {
+    const bridge = getProviderSelectionBridge();
+    if (!bridge) {
+        return;
+    }
+
+    try {
+        await bridge.set(providerId);
+    } catch (error) {
+        console.warn('Failed to persist preferred provider:', error);
+    }
+};
+
+const restorePreferredProvider = async () => {
+    const preferredProvider = await readPreferredProvider();
+    if (!preferredProvider) {
+        return;
+    }
+
+    const option = findProviderOptionById(preferredProvider);
+    if (!option) {
+        return;
+    }
+
+    if (source.value !== option.label) {
+        source.value = option.label;
+    }
+};
+
+const getProviderCacheBridge = () => {
+    const bridge = (window as any)?.electronAPI?.providerCache;
+    if (!bridge?.get || !bridge?.set || !bridge?.clear) {
+        return null;
+    }
+    return bridge;
+};
+
+const readProviderCache = async (providerId: ProviderId): Promise<ProviderCachePayload | null> => {
+    const bridge = getProviderCacheBridge();
+    if (!bridge) {
+        return null;
+    }
+
+    try {
+        const payload = await bridge.get(providerId);
+        if (!payload || typeof payload !== 'object') {
+            return null;
+        }
+        return payload as ProviderCachePayload;
+    } catch (error) {
+        console.warn('Failed to read provider cache:', error);
+        return null;
+    }
+};
+
+const writeProviderCache = async (providerId: ProviderId, payload: ProviderCachePayload) => {
+    const bridge = getProviderCacheBridge();
+    if (!bridge) {
+        return;
+    }
+
+    try {
+        await bridge.set(providerId, payload);
+    } catch (error) {
+        console.warn('Failed to write provider cache:', error);
+    }
+};
+
+const clearProviderCache = async (providerId: ProviderId) => {
+    const bridge = getProviderCacheBridge();
+    if (!bridge) {
+        return;
+    }
+
+    try {
+        await bridge.clear(providerId);
+    } catch (error) {
+        console.warn('Failed to clear provider cache:', error);
+    }
+};
+
+const openNotice = (
+    type: NoticeType,
+    title: string,
+    message: string,
+    duration = 2600
+) => {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    notices.value.push({ id, type, title, message });
+    const timer = setTimeout(() => {
+        dismissNotice(id);
+    }, duration);
+    noticeTimers.set(id, timer);
+};
+
+const dismissNotice = (id: number) => {
+    const timer = noticeTimers.get(id);
+    if (timer) {
+        clearTimeout(timer);
+        noticeTimers.delete(id);
+    }
+    notices.value = notices.value.filter((notice) => notice.id !== id);
+};
+
+const applyProviderStatus = (status: {
+    configured: boolean;
+    masked: string;
+    state?: 'connected' | 'disconnected' | 'error';
+    models?: string[];
+    selected_model?: string;
+}) => {
+    apiKeyConfigured.value = !!status.configured;
+    apiKeyMasked.value = status.masked || '';
+    if (status.state === 'connected') {
+        connectionState.value = 'connected';
+    } else if (status.state === 'error') {
+        connectionState.value = 'error';
+    } else {
+        connectionState.value = 'idle';
+    }
+
+    if (Array.isArray(status.models) && status.models.length > 0) {
+        applyModelOptions(status.models);
+        if (status.selected_model && status.models.includes(status.selected_model)) {
+            aiModel.value = status.selected_model;
+        }
+    }
+};
+
+const applyModelOptions = (models: string[]) => {
+    const normalized = Array.from(new Set(
+        (models || [])
+            .map((item) => item.trim())
+            .filter(Boolean)
+    ));
+
+    if (normalized.length === 0) {
+        return;
+    }
+
+    modelOptions.value = normalized;
+    if (!normalized.includes(aiModel.value)) {
+        aiModel.value = normalized[0];
+    }
+};
+
+const resetModelOptionsToFallback = () => {
+    const fallback = selectedProviderOption.value.fallbackModels;
+    modelOptions.value = [...fallback];
+    aiModel.value = fallback[0] || '';
+};
+
+const persistConnectedProviderCache = async () => {
+    if (!isProviderSupported.value || connectionState.value !== 'connected') {
+        return;
+    }
+
+    const models = Array.from(new Set(
+        modelOptions.value
+            .map((item) => item.trim())
+            .filter(Boolean)
+    ));
+
+    if (models.length === 0) {
+        return;
+    }
+
+    await writeProviderCache(currentProviderId.value, {
+        providerId: currentProviderId.value,
+        source: source.value,
+        connectionState: 'connected',
+        models,
+        selectedModel: aiModel.value,
+        apiKeyMasked: apiKeyMasked.value || '',
+        apiBaseUrl: apiUrl.value.trim(),
+        updatedAt: Date.now(),
+    });
+};
+
+const restoreProviderCache = async (): Promise<boolean> => {
+    if (!isProviderSupported.value || !apiKeyConfigured.value) {
+        return false;
+    }
+
+    const cache = await readProviderCache(currentProviderId.value);
+    if (!cache) {
+        return false;
+    }
+
+    if (
+        cache.providerId !== currentProviderId.value ||
+        cache.source !== source.value ||
+        cache.connectionState !== 'connected' ||
+        !Array.isArray(cache.models) ||
+        cache.models.length === 0
+    ) {
+        return false;
+    }
+
+    if ((cache.apiKeyMasked || '') !== (apiKeyMasked.value || '')) {
+        return false;
+    }
+
+    applyModelOptions(cache.models);
+    if (cache.selectedModel && cache.models.includes(cache.selectedModel)) {
+        aiModel.value = cache.selectedModel;
+    }
+    if (cache.apiBaseUrl) {
+        apiUrl.value = cache.apiBaseUrl;
+    }
+    connectionState.value = 'connected';
+    return true;
+};
+
+const applyProviderSnapshotFast = async (providerId: ProviderId): Promise<boolean> => {
+    const memorized = providerStatusMemory.get(providerId);
+    if (memorized) {
+        applyProviderStatus(memorized);
+        if (memorized.api_base_url) {
+            apiUrl.value = memorized.api_base_url;
+        } else {
+            apiUrl.value = selectedProviderOption.value.defaultApiUrl;
+        }
+        return true;
+    }
+
+    const cache = await readProviderCache(providerId);
+    if (!cache) {
+        return false;
+    }
+
+    if (
+        cache.providerId !== providerId ||
+        cache.source !== source.value ||
+        !Array.isArray(cache.models) ||
+        cache.models.length === 0
+    ) {
+        return false;
+    }
+
+    applyModelOptions(cache.models);
+    if (cache.selectedModel && cache.models.includes(cache.selectedModel)) {
+        aiModel.value = cache.selectedModel;
+    }
+
+    if (cache.apiBaseUrl) {
+        apiUrl.value = cache.apiBaseUrl;
+    } else {
+        apiUrl.value = selectedProviderOption.value.defaultApiUrl;
+    }
+
+    apiKeyMasked.value = cache.apiKeyMasked || '';
+    apiKeyConfigured.value = !!cache.apiKeyMasked;
+    connectionState.value = cache.connectionState === 'connected' ? 'connected' : 'idle';
+    return true;
+};
+
+const refreshProviderModels = async (openErrorNotice = false) => {
+    if (!isProviderSupported.value || isLoadingModels.value) {
+        return;
+    }
+
+    try {
+        isLoadingModels.value = true;
+        const modelResult = await getProviderModels(props.appConfig, currentProviderId.value);
+        applyModelOptions(modelResult.models || []);
+    } catch (error) {
+        console.error('Failed to refresh model list:', error);
+        if (openErrorNotice) {
+            const message = error instanceof Error ? error.message : 'Failed to fetch models';
+            openNotice('error', 'Models failed', message);
+        }
+    } finally {
+        isLoadingModels.value = false;
+    }
+};
+
+const persistSelectedModel = async () => {
+    if (!isProviderSupported.value || !aiModel.value.trim()) {
+        return;
+    }
+
+    const models = modelOptions.value
+        .map((item) => item.trim())
+        .filter(Boolean);
+    if (models.length === 0) {
+        return;
+    }
+
+    try {
+        await updateProviderConfig(props.appConfig, {
+            provider: currentProviderId.value,
+            models,
+            selected_model: aiModel.value.trim(),
+        });
+    } catch (error) {
+        console.warn('Failed to persist selected model:', error);
+    }
+};
+
+const connectionStatusText = computed(() => {
+    if (!isProviderSupported.value) {
+        return 'Provider not supported yet';
+    }
+    switch (connectionState.value) {
+        case 'connecting':
+            return 'Connecting...';
+        case 'connected':
+            return 'Connected';
+        case 'error':
+            return 'Connect failed';
+        default:
+            return 'Disconnected';
+    }
+});
+
+const connectionStatusDotClass = computed(() => {
+    if (!isProviderSupported.value) {
+        return 'bg-slate-300';
+    }
+    switch (connectionState.value) {
+        case 'connecting':
+            return 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)] animate-pulse';
+        case 'connected':
+            return 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.45)]';
+        case 'error':
+            return 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.35)]';
+        default:
+            return 'bg-slate-300';
+    }
+});
+
+const connectionStatusTextClass = computed(() => {
+    if (!isProviderSupported.value) {
+        return 'text-slate-500';
+    }
+    switch (connectionState.value) {
+        case 'connected':
+            return 'text-emerald-700';
+        case 'error':
+            return 'text-rose-600';
+        default:
+            return 'text-slate-500';
+    }
+});
 
 const scrollToBottom = () => {
     messagesEndRef.value?.scrollIntoView({ behavior: 'smooth' });
@@ -248,6 +786,11 @@ watch(messages, async () => {
 
 // Click Outside Logic
 const handleClickOutside = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('.custom-select-dropdown')) {
+        return;
+    }
+
     if (
         isConfigOpen.value &&
         configMenuRef.value &&
@@ -277,6 +820,7 @@ watch(isConfigOpen, (newVal) => {
 
 const handleSendMessage = async () => {
     if (!input.value.trim() || isLoading.value) return;
+    void persistPreferredProvider(currentProviderId.value);
 
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: input.value };
     messages.value.push(userMsg);
@@ -299,7 +843,12 @@ const handleSendMessage = async () => {
                 selectedId: props.selectedId,
                 activeTask: props.activeTask
             },
-            { model: aiModel.value, temperature: 0.8, appConfig: props.appConfig }
+            {
+                provider: currentProviderId.value,
+                model: aiModel.value,
+                temperature: 0.8,
+                appConfig: props.appConfig
+            }
         );
 
         const aiMsg: ChatMessage = { id: (Date.now() + 1).toString(), role: 'model', text: responseText };
@@ -308,7 +857,7 @@ const handleSendMessage = async () => {
         const errorMsg: ChatMessage = {
             id: (Date.now() + 1).toString(),
             role: 'model',
-            text: "连接创作矩阵时遇到一点小麻烦，请检查 API 配置或网络后再试。",
+            text: '连接创作服务失败，请检查 API 配置后重试。',
             isError: true
         };
         messages.value.push(errorMsg);
@@ -317,21 +866,205 @@ const handleSendMessage = async () => {
     }
 };
 
-const handleOpenKeySelector = async () => {
-    if ((window as any).aistudio?.openSelectKey) {
-        await (window as any).aistudio.openSelectKey();
-    } else {
-        alert("API 配置面板在当前环境中不可用。");
+const refreshApiKeyStatus = async () => {
+    try {
+        if (!isProviderSupported.value) {
+            apiKeyConfigured.value = false;
+            apiKeyMasked.value = '';
+            return null;
+        }
+
+        const status = await getProviderStatus(props.appConfig, currentProviderId.value);
+        providerStatusMemory.set(currentProviderId.value, status);
+        applyProviderStatus(status);
+        if (status.api_base_url) {
+            apiUrl.value = status.api_base_url;
+        } else if (!apiUrl.value.trim()) {
+            apiUrl.value = selectedProviderOption.value.defaultApiUrl;
+        }
+
+        return status;
+    } catch (error) {
+        console.error('Failed to refresh API key status:', error);
+        return null;
+    }
+};
+
+const handleSaveApiKey = async (): Promise<boolean> => {
+    if (!apiKeyInput.value.trim() || isSavingApiKey.value) return false;
+
+    try {
+        if (!isProviderSupported.value) {
+            return false;
+        }
+        isSavingApiKey.value = true;
+        const status = await connectProvider(props.appConfig, currentProviderId.value, {
+            apiKey: apiKeyInput.value.trim(),
+            apiBaseUrl: apiUrl.value.trim() || undefined,
+            verify: false,
+        });
+
+        applyProviderStatus(status);
+        await clearProviderCache(currentProviderId.value);
+        connectionState.value = 'idle';
+        resetModelOptionsToFallback();
+        apiKeyInput.value = '';
+        isConfigOpen.value = true;
+        return true;
+    } catch (error) {
+        console.error('Failed to save API key:', error);
+        const message = error instanceof Error ? error.message : 'Failed to save API key';
+        openNotice('error', 'Save failed', message);
+        isConfigOpen.value = true;
+        return false;
+    } finally {
+        isSavingApiKey.value = false;
+    }
+};
+
+const handleConnect = async () => {
+    if (isConnecting.value) return;
+
+    try {
+        if (!isProviderSupported.value) {
+            return;
+        }
+        isConnecting.value = true;
+        connectionState.value = 'connecting';
+
+        const status = await connectProvider(props.appConfig, currentProviderId.value, {
+            apiKey: apiKeyInput.value.trim() || undefined,
+            apiBaseUrl: apiUrl.value.trim() || undefined,
+            verify: true,
+        });
+
+        applyProviderStatus(status);
+        connectionState.value = status.ok ? 'connected' : 'error';
+        if (!status.ok) {
+            throw new Error(status.message || 'Connection failed');
+        }
+
+        apiKeyInput.value = '';
+        if (!status.models || status.models.length === 0) {
+            await refreshProviderModels(true);
+        }
+        await persistConnectedProviderCache();
+        openNotice('success', 'Connect success', '');
+    } catch (error) {
+        connectionState.value = 'error';
+        await clearProviderCache(currentProviderId.value);
+        const message = error instanceof Error ? error.message : 'Connection failed';
+        openNotice('error', 'Connect failed', message);
+    } finally {
+        isConnecting.value = false;
     }
 };
 
 const handleTestConnection = async () => {
-    isTesting.value = true;
-    setTimeout(() => {
+    if (isTesting.value) return;
+
+    try {
+        if (!isProviderSupported.value) {
+            return;
+        }
+        isTesting.value = true;
+        const result = await testProvider(props.appConfig, currentProviderId.value, {
+            model: aiModel.value,
+            message: 'Hi',
+        });
+        openNotice('success', 'Test success', '');
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Connection test failed';
+        openNotice('error', 'Test failed', message);
+    } finally {
         isTesting.value = false;
-        alert("连接测试成功！API 已准备就绪。");
-    }, 1500);
+    }
 };
+
+const checkInitialProviderSetup = async () => {
+    if (hasCheckedInitialProviderSetup.value || !props.appConfig?.isReady) {
+        return;
+    }
+
+    try {
+        const snapshot = await getAllProviderStatuses(props.appConfig);
+        const hasConfiguredProvider = providerOptions.some((option) => {
+            return !!snapshot.providers[option.providerId]?.configured;
+        });
+        hasCheckedInitialProviderSetup.value = true;
+
+        if (!hasConfiguredProvider) {
+            isConfigOpen.value = true;
+            openNotice('info', 'Setup required', 'Save API key to start');
+        }
+    } catch (error) {
+        console.error('Failed to check initial provider setup:', error);
+    }
+};
+
+watch(() => props.appConfig?.isReady, async (ready) => {
+    if (ready) {
+        await checkInitialProviderSetup();
+        const status = await refreshApiKeyStatus();
+        const hasBackendPersistedModels = !!(
+            status &&
+            status.state === 'connected' &&
+            Array.isArray(status.models) &&
+            status.models.length > 0
+        );
+
+        const restored = hasBackendPersistedModels ? false : await restoreProviderCache();
+        if (!hasBackendPersistedModels && !restored && !apiKeyConfigured.value) {
+            resetModelOptionsToFallback();
+        }
+    }
+}, { immediate: true });
+
+watch(source, async () => {
+    void persistPreferredProvider(currentProviderId.value);
+    apiKeyInput.value = '';
+    const fastApplied = await applyProviderSnapshotFast(currentProviderId.value);
+    if (!fastApplied) {
+        connectionState.value = 'idle';
+        apiKeyConfigured.value = false;
+        apiKeyMasked.value = '';
+        apiUrl.value = selectedProviderOption.value.defaultApiUrl;
+        resetModelOptionsToFallback();
+    }
+
+    const status = await refreshApiKeyStatus();
+    if (
+        !status ||
+        (!status.configured && (!status.models || status.models.length === 0))
+    ) {
+        resetModelOptionsToFallback();
+    }
+    emitConfigChange();
+});
+
+watch(aiModel, () => {
+    const memorized = providerStatusMemory.get(currentProviderId.value);
+    if (memorized) {
+        memorized.selected_model = aiModel.value;
+        providerStatusMemory.set(currentProviderId.value, memorized);
+    }
+    void persistSelectedModel();
+    void persistConnectedProviderCache();
+    emitConfigChange();
+});
+
+watch(currentProviderId, () => {
+    emitConfigChange();
+}, { immediate: true });
+
+void restorePreferredProvider();
+
+onUnmounted(() => {
+    document.removeEventListener('mousedown', handleClickOutside);
+    document.removeEventListener('keydown', handleEscKey);
+    noticeTimers.forEach((timer) => clearTimeout(timer));
+    noticeTimers.clear();
+});
 
 
 // Task Logic
@@ -360,8 +1093,8 @@ const getTaskActionLabel = (type: TaskType) => {
 };
 
 const getApplyLabel = () => {
-    if(!props.activeTask) return '应用';
-    switch(props.activeTask.type) {
+    if (!props.activeTask) return '应用';
+    switch (props.activeTask.type) {
         case 'SYNOPSIS': return '应用此章纲';
         case 'CONTENT': return '插入正文';
         case 'POLISH_SELECTION': return '替换选中内容';

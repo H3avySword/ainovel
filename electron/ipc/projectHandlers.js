@@ -167,6 +167,7 @@ export const registerProjectHandlers = (ipcMain, deps) => {
                 sourceNodeId: payload.sourceNodeId,
                 targetNodeType: payload.targetNodeType,
                 chapterCount,
+                provider: payload.provider,
                 modelName: payload.modelName,
                 temperature: payload.temperature,
                 backendPort: getBackendPort(),

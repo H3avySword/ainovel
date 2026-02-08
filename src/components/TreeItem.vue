@@ -5,16 +5,27 @@
       :class="isSelected ? 'bg-indigo-50 text-indigo-900 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
       :style="{ paddingLeft: paddingLeft }"
       @click.stop="emit('select', node.id)"
+      @keydown.enter.prevent.stop="emit('select', node.id)"
+      @keydown.space.prevent.stop="emit('select', node.id)"
+      role="button"
+      tabindex="0"
+      :aria-label="`Select node ${node.title || 'Untitled'}`"
+      :aria-current="isSelected ? 'page' : undefined"
     >
       <!-- Toggle Arrow -->
-      <div
+      <button
+        type="button"
         class="p-0.5 mr-1.5 rounded-md hover:bg-black/5 text-slate-400 transition-colors"
         :class="{ 'invisible': !hasChildren && !nextType }"
         @click.stop="emit('toggle', node.id)"
+        @keydown.stop
+        :disabled="!hasChildren && !nextType"
+        :aria-label="isExpanded ? 'Collapse node' : 'Expand node'"
+        :aria-expanded="hasChildren ? String(isExpanded) : undefined"
       >
         <ChevronDown v-if="isExpanded" :size="12" />
         <ChevronRight v-else :size="12" />
-      </div>
+      </button>
 
       <!-- Icon -->
       <component
@@ -43,8 +54,10 @@
       <div v-if="!isEditing" class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           @click.stop="startRename"
+          @keydown.stop
           title="重命名"
           class="p-1 hover:bg-white rounded text-slate-400 hover:text-indigo-600 transition-colors hover:shadow-sm"
+          aria-label="Rename node"
         >
           <Edit2 :size="11" />
         </button>
@@ -52,8 +65,10 @@
         <button
           v-if="nextType"
           @click.stop="emit('add', node.id, nextType)"
+          @keydown.stop
           :title="'添加' + nextTypeLabel"
           class="p-1 hover:bg-white rounded text-slate-400 hover:text-indigo-600 transition-colors hover:shadow-sm"
+          :aria-label="'Add ' + nextTypeLabel"
         >
           <Plus :size="13" />
         </button>
@@ -61,8 +76,10 @@
         <button
            v-if="node.type !== NodeType.ROOT && node.type !== NodeType.SETTING_ROOT"
            @click.stop="emit('delete', node.id)"
+           @keydown.stop
            title="删除"
            class="p-1 hover:bg-white rounded text-slate-400 hover:text-red-500 transition-colors hover:shadow-sm"
+           aria-label="Delete node"
         >
           <Trash2 :size="13" />
         </button>

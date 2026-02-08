@@ -5,12 +5,22 @@
       class="fixed inset-0 z-[220] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4 animate-in fade-in duration-200"
       @click.self="emit('close')"
     >
-      <div class="w-full max-w-2xl rounded-2xl border border-white/20 bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 relative">
+      <div
+        ref="dialogRef"
+        class="w-full max-w-2xl rounded-2xl border border-white/20 bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 relative"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="split-dialog-title"
+        tabindex="-1"
+        @keydown="handleDialogKeydown"
+      >
         <div class="px-6 pt-8 pb-4 flex flex-col items-center justify-center text-center relative pointer-events-none">
           <button
+            ref="closeBtnRef"
             @click="emit('close')"
             class="pointer-events-auto absolute right-4 top-4 p-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
             title="关闭"
+            aria-label="Close dialog"
           >
             <X :size="20" stroke-width="2" />
           </button>
@@ -19,7 +29,7 @@
             <ListTree :size="24" stroke-width="2" />
           </div>
 
-          <h3 class="text-xl font-bold text-slate-800 tracking-tight">AI 智能拆分</h3>
+          <h3 id="split-dialog-title" class="text-xl font-bold text-slate-800 tracking-tight">AI 智能拆分</h3>
           <p class="text-xs text-slate-400 mt-1 font-medium">自动规划与生成{{ targetLabelText }}结构</p>
         </div>
 
@@ -144,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch, nextTick, onUnmounted } from 'vue';
 import {
   X, ListTree, Minus, Loader2, RotateCw, AlertTriangle, CheckCircle2, Wand2, Sparkles
 } from 'lucide-vue-next';
@@ -167,6 +177,10 @@ const emit = defineEmits<{
   (e: 'apply-chapters'): void;
 }>();
 
+const dialogRef = ref<HTMLDivElement | null>(null);
+const closeBtnRef = ref<HTMLButtonElement | null>(null);
+const lastFocusedElement = ref<HTMLElement | null>(null);
+
 const targetLabelText = computed(() => {
   const label = (props.targetLabel || '').trim();
   return label || '子节点';
@@ -182,4 +196,70 @@ const adjustChapterCount = (delta: number) => {
   const nextValue = Math.max(2, Math.min(50, props.chapterCount + delta));
   emit('update-chapter-count', nextValue);
 };
+
+const getFocusableElements = (container: HTMLElement): HTMLElement[] => {
+  const selectors = [
+    'button:not([disabled])',
+    '[href]',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+  ].join(',');
+
+  return Array.from(container.querySelectorAll<HTMLElement>(selectors))
+    .filter((element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+};
+
+const trapFocus = (event: KeyboardEvent) => {
+  if (event.key !== 'Tab' || !dialogRef.value) return;
+
+  const focusables = getFocusableElements(dialogRef.value);
+  if (focusables.length === 0) {
+    event.preventDefault();
+    dialogRef.value.focus();
+    return;
+  }
+
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+
+  if (event.shiftKey) {
+    if (active === first || !dialogRef.value.contains(active)) {
+      event.preventDefault();
+      last.focus();
+    }
+    return;
+  }
+
+  if (active === last || !dialogRef.value.contains(active)) {
+    event.preventDefault();
+    first.focus();
+  }
+};
+
+const handleDialogKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    emit('close');
+    return;
+  }
+  trapFocus(event);
+};
+
+watch(() => props.isOpen, async (open) => {
+  if (open) {
+    lastFocusedElement.value = document.activeElement as HTMLElement | null;
+    await nextTick();
+    closeBtnRef.value?.focus();
+    return;
+  }
+
+  lastFocusedElement.value?.focus?.();
+  lastFocusedElement.value = null;
+});
+
+onUnmounted(() => {
+  lastFocusedElement.value = null;
+});
 </script>

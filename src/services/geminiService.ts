@@ -10,6 +10,7 @@ export interface NovelState {
 }
 
 export interface AssistantConfig {
+  provider: 'google' | 'openai-compatible' | 'deepseek';
   model: string;
   temperature: number;
   appConfig: AppConfig;
@@ -30,6 +31,7 @@ export const generateWritingAssistantResponse = async (
       history,
       message: currentMessage,
       config: {
+        provider: config.provider,
         model: config.model,
         temperature: config.temperature
       }

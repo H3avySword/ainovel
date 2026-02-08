@@ -1,18 +1,56 @@
 {
     "name": "nebula-write-local",
-    "productName": "AI Novel Studio",
-    "version": "0.1.0",
+    "productName": "NEBULA WRITE",
+    "version": "0.2.0",
     "main": "electron/main.js",
     "type": "module",
+    "description": "AI Novel Studio desktop app",
+    "author": "DarkIceField",
     "scripts": {
         "dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron . --remote-debugging-port=9222\"",
         "build": "tsc && vite build",
         "preview": "vite preview",
-        "electron:build": "vite build && electron-builder"
+        "backend:build": "python -m PyInstaller --noconfirm --clean --onefile --name backend --distpath backend/dist --workpath backend/build --specpath backend backend/main.py",
+        "electron:build": "npm run backend:build && set CSC_IDENTITY_AUTO_DISCOVERY=false&& vite build && electron-builder"
+    },
+    "build": {
+        "appId": "com.darkicefield.nebulawrite",
+        "productName": "NEBULA WRITE",
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "dist/**",
+            "electron/**",
+            "package.json"
+        ],
+        "extraResources": [
+            {
+                "from": "backend/dist/backend.exe",
+                "to": "backend/backend.exe"
+            },
+            {
+                "from": "backend",
+                "to": "backend",
+                "filter": [
+                    "**/*",
+                    "!build/**",
+                    "!dist/**",
+                    "!__pycache__/**"
+                ]
+            }
+        ],
+        "asarUnpack": [
+            "backend/**"
+        ],
+        "win": {
+            "target": [
+                "nsis"
+            ]
+        }
     },
     "dependencies": {
         "@google/genai": "^1.35.0",
-        "dotenv": "^17.2.3",
         "electron-mcp-server": "^1.5.0",
         "lucide-react": "^0.562.0",
         "lucide-vue-next": "^0.563.0",

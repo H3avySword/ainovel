@@ -3,7 +3,7 @@ import json
 
 from fastapi import APIRouter, HTTPException
 from models import ChatRequestShort, NodeType
-from services.llm_service import generate_response
+from services.llm_service import generate_response, get_default_model, normalize_provider
 
 router = APIRouter()
 
@@ -175,12 +175,18 @@ async def chat_short_novel(request: ChatRequestShort):
     full_system_instruction = f"{base_instruction}\n\n{node_instruction}\n\n{task_instruction}"
 
     # 3. Call LLM
+    config = request.config or {}
+    provider_name = normalize_provider(str(config.get("provider", "google")))
+    model_name = str(config.get("model") or get_default_model(provider_name))
+    temperature = float(config.get("temperature", 0.7))
+
     response_text = generate_response(
         message=request.message,
         history=request.history,
         system_instruction=full_system_instruction,
-        model_name=request.config.get("model", "gemini-3-flash-preview") if request.config else "gemini-3-flash-preview",
-        temperature=request.config.get("temperature", 0.7) if request.config else 0.7
+        model_name=model_name,
+        temperature=temperature,
+        provider_name=provider_name,
     )
     
     return {"text": response_text}

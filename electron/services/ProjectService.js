@@ -54,6 +54,24 @@ const splitCounterSuffixMap = {
     VOLUME: '卷',
     SECTION: '篇'
 };
+const splitDefaultModelByProvider = {
+    google: 'gemini-3-flash-preview',
+    'openai-compatible': 'gpt-4o-mini',
+    deepseek: 'deepseek-chat'
+};
+
+const normalizeSplitProvider = (rawProvider) => {
+    const provider = String(rawProvider || '').trim().toLowerCase();
+    if (!provider) return 'google';
+    if (provider === 'openai') return 'openai-compatible';
+    if (provider === 'openai_compatible') return 'openai-compatible';
+    if (provider === 'google-ai-studio') return 'google';
+    return provider;
+};
+
+const getSplitDefaultModel = (provider) => {
+    return splitDefaultModelByProvider[provider] || splitDefaultModelByProvider.google;
+};
 
 const normalizeSplitTitle = (rawTitle, index, targetNodeType) => {
     const suffix = splitCounterSuffixMap[targetNodeType] || '章';
@@ -347,7 +365,7 @@ export default class ProjectService {
         return makeStatePayload(state);
     }
 
-    static async splitShortPreview({ projectPath, sourceNodeId, targetNodeType, chapterCount, modelName, temperature, backendPort, backendToken }) {
+    static async splitShortPreview({ projectPath, sourceNodeId, targetNodeType, chapterCount, provider, modelName, temperature, backendPort, backendToken }) {
         const state = await ProjectStore.ensure(projectPath);
         if (!['CHAPTER', 'SECTION', 'VOLUME'].includes(targetNodeType || '')) {
             const error = new Error('目标子节点类型不支持拆分。');
@@ -367,6 +385,8 @@ export default class ProjectService {
         const novelOutline = outlineResult.success ? (outlineResult.content || '') : '';
         const sourceSummaryResult = await FileManager.loadNodeContent(projectPath, state.nodes, state.projectMode, sourceNode.id, 'outline');
         const sourceSummary = sourceSummaryResult.success ? (sourceSummaryResult.content || sourceNode.summary || '') : (sourceNode.summary || '');
+        const normalizedProvider = normalizeSplitProvider(provider);
+        const resolvedModelName = String(modelName || '').trim() || getSplitDefaultModel(normalizedProvider);
 
         const targetLabel = splitTargetTypeLabelMap[targetNodeType] || '子纲';
 
@@ -394,7 +414,8 @@ export default class ProjectService {
                 }
             },
             config: {
-                model: modelName || 'gemini-3-flash-preview',
+                provider: normalizedProvider,
+                model: resolvedModelName,
                 temperature: Number.isFinite(temperature) ? temperature : 0.3
             }
         };

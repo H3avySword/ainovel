@@ -52,6 +52,7 @@ Thumbs.db
 # Temporary Files
 temp_screen.png
 temp_screen.png.encrypted
+data/provider_settings.json
 
 # AI Agents / Editors
 .agent/
