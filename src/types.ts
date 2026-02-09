@@ -39,6 +39,15 @@ export interface AppConfig {
   isReady: boolean;
 }
 
+export type NoticeType = 'success' | 'error' | 'info';
+
+export interface NoticeItem {
+  id: number;
+  type: NoticeType;
+  title: string;
+  message?: string;
+}
+
 // AI Task Definitions
 export type TaskType = 'SYNOPSIS' | 'CONTENT' | 'POLISH_SELECTION' | 'POLISH_CHAPTER' | 'SPLIT_CHAPTERS' | 'SPLIT_CHILDREN';
 
@@ -53,5 +62,9 @@ export interface WritingTask {
   nodeId: string;
   field: 'summary' | 'content';
   contextData?: string; // For selection or additional context
+  selectionStart?: number;
+  selectionEnd?: number;
+  selectionSnapshot?: string;
+  selectionFieldTextSnapshot?: string;
   status: 'IDLE' | 'PENDING' | 'COMPLETED';
 }

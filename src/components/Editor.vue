@@ -26,7 +26,7 @@
           <button @mousedown.prevent @click="insertMarkdown('1. ')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Numbered List"><ListOrdered :size="17" :stroke-width="2.5" /></button>
           <button @mousedown.prevent @click="insertMarkdown('---\n')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Divider"><Minus :size="17" :stroke-width="2.5" /></button>
           <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
-          <button @mousedown.prevent @click="startPolishSelection" class="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-all" title="AI Polish Selection"><Sparkles :size="17" :stroke-width="2.5" /></button>
+          <button @mousedown.prevent @click="startPolishSelection" class="p-1.5 rounded-lg border border-indigo-100/70 bg-gradient-to-br from-indigo-50 to-fuchsia-50/70 text-indigo-600 shadow-sm shadow-indigo-100/50 hover:from-indigo-100 hover:to-fuchsia-100/80 hover:text-fuchsia-700 transition-all" title="AI Polish Selection"><Sparkles :size="17" :stroke-width="2.5" /></button>
           <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
 
         <div class="ml-0.5 rounded-xl bg-slate-100/90 p-1 grid grid-cols-2 gap-0.5 relative isolate">
@@ -118,14 +118,31 @@
             </div>
           </div>
 
-          <div v-if="showSummary">
+          <div v-if="showSummary" class="relative">
+            <div
+              v-if="inlineNotice.visible && inlineNotice.field === 'summary'"
+              class="absolute inset-x-0 -top-3 z-20 flex justify-center pointer-events-none"
+            >
+              <div class="pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-full shadow-lg bg-indigo-500/85 text-white">
+                <Info :size="16" class="shrink-0" />
+                <span class="text-sm font-medium">{{ inlineNotice.title }}</span>
+                <button
+                  class="ml-1 p-0.5 rounded hover:bg-white/20 transition-colors"
+                  @click="dismissInlineNotice"
+                  aria-label="Dismiss notice"
+                >
+                  <X :size="14" />
+                </button>
+              </div>
+            </div>
             <div
               v-if="summaryPreview"
               ref="summaryPreviewRef"
               class="h-64 overflow-y-auto custom-scrollbar p-6 prose prose-sm prose-slate max-w-none text-slate-600 font-sans cursor-pointer bg-slate-50 rounded-xl border-2 border-transparent"
+              :class="getPreviewContainerClass('summary')"
               @scroll="handlePreviewScroll('summary')"
               @click="openEditorField('summary')"
-              v-html="getPreviewHtml(node.summary || '')"
+              v-html="getPreviewHtml('summary', node.summary || '')"
             ></div>
             <textarea
               v-else
@@ -166,6 +183,22 @@
           </div>
 
           <div v-if="showContent" class="relative group/editor">
+            <div
+              v-if="inlineNotice.visible && inlineNotice.field === 'content'"
+              class="absolute inset-x-0 -top-3 z-20 flex justify-center pointer-events-none"
+            >
+              <div class="pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-full shadow-lg bg-indigo-500/85 text-white">
+                <Info :size="16" class="shrink-0" />
+                <span class="text-sm font-medium">{{ inlineNotice.title }}</span>
+                <button
+                  class="ml-1 p-0.5 rounded hover:bg-white/20 transition-colors"
+                  @click="dismissInlineNotice"
+                  aria-label="Dismiss notice"
+                >
+                  <X :size="14" />
+                </button>
+              </div>
+            </div>
             <!-- Floating Word Count -->
             <div class="absolute top-2 right-2 z-10 text-[10px] text-slate-400 font-mono bg-slate-100/50 backdrop-blur-sm px-2 py-0.5 rounded-full select-none pointer-events-none transition-opacity opacity-50 group-hover/editor:opacity-100">
                {{ (node.content || '').length }} Words
@@ -174,9 +207,10 @@
               v-if="contentPreview"
               ref="contentPreviewRef"
               class="prose prose-slate prose-lg max-w-none font-serif prose-headings:font-sans prose-headings:font-bold prose-p:leading-loose prose-blockquote:border-indigo-300 prose-blockquote:bg-indigo-50/30 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic h-[600px] overflow-y-auto custom-scrollbar cursor-pointer p-4 rounded-xl bg-slate-50/50"
+              :class="getPreviewContainerClass('content')"
               @scroll="handlePreviewScroll('content')"
               @click="openEditorField('content')"
-              v-html="getPreviewHtml(node.content || '')"
+              v-html="getPreviewHtml('content', node.content || '')"
             ></div>
             <textarea
               v-else
@@ -213,19 +247,19 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
-import { NodeData, NodeType } from '../types';
+import { NodeData, NodeType, WritingTask, SplitNodeItem, ProjectMode, NoticeType } from '../types';
 import { marked } from 'marked';
 import SplitNodeDialog from './SplitNodeDialog.vue';
 import {
   Bold, Italic, Heading1, Heading2, Quote, List, ListOrdered,
   Eye, Pencil, Code, Minus, Type, ChevronDown, ChevronRight,
   ListTree,
-  Wand2, Sparkles
+  Wand2, Sparkles, Info, X
 } from 'lucide-vue-next';
-import { WritingTask, SplitNodeItem, ProjectMode } from '../types';
 
 const props = defineProps<{
   node: NodeData;
+  activeTask: WritingTask | null;
   projectMode: ProjectMode;
   isSplitModalOpen: boolean;
   isSplitGenerating: boolean;
@@ -241,12 +275,20 @@ const emit = defineEmits<{
   (e: 'change', id: string, field: keyof NodeData, value: string): void;
   (e: 'save', id: string, field: keyof NodeData, value: string): void;
   (e: 'start-ai-task', task: WritingTask): void;
+  (e: 'notice', payload: {
+    type: NoticeType;
+    title: string;
+    message?: string;
+    anchor?: 'textarea';
+    anchorPoint?: { left: number; top: number };
+  }): void;
   (e: 'open-split-modal'): void;
   (e: 'close-split-modal'): void;
   (e: 'update-split-chapter-count', count: number): void;
   (e: 'generate-split-preview'): void;
   (e: 'update-split-title', index: number, title: string): void;
   (e: 'apply-split-chapters'): void;
+  (e: 'cancel-polish-selection', payload: { nodeId: string; field: 'summary' | 'content' }): void;
 }>();
 
 // State
@@ -273,6 +315,12 @@ const isRestoringScroll = ref<Record<ActiveField, boolean>>({
   summary: false,
   content: false,
 });
+const inlineNotice = ref<{ visible: boolean; title: string; field: ActiveField | null }>({
+    visible: false,
+    title: '',
+    field: null,
+});
+let inlineNoticeTimer: ReturnType<typeof setTimeout> | null = null;
 
 const getTypeLabel = (type: NodeType) => {
     switch (type) {
@@ -289,6 +337,15 @@ const getTypeLabel = (type: NodeType) => {
 
 const isContentNode = computed(() => props.node.type === NodeType.CHAPTER || props.node.type === NodeType.SETTING_ITEM);
 const isPreviewingCurrent = computed(() => activeField.value === 'summary' ? summaryPreview.value : contentPreview.value);
+const activePolishTask = computed(() => {
+    if (!props.activeTask || props.activeTask.type !== 'POLISH_SELECTION') {
+        return null;
+    }
+    if (props.activeTask.nodeId !== props.node.id) {
+        return null;
+    }
+    return props.activeTask;
+});
 
 const getTextareaByField = (field: ActiveField) => {
     return field === 'summary' ? summaryRef.value : contentRef.value;
@@ -381,7 +438,44 @@ const restoreRatio = async (field: ActiveField, mode: ScrollMode, shouldFocus = 
     });
 };
 
+const cancelPolishSelectionIfNeeded = (field: ActiveField) => {
+    const task = activePolishTask.value;
+    if (!task) {
+        return;
+    }
+    emit('cancel-polish-selection', {
+        nodeId: props.node.id,
+        field
+    });
+};
+
+const switchFieldToPreview = (field: ActiveField) => {
+    captureRatio(field, 'edit');
+    if (field === 'summary') {
+        summaryPreview.value = true;
+    } else {
+        contentPreview.value = true;
+    }
+    void restoreRatio(field, 'preview');
+    activeField.value = null;
+};
+
+const getPreviewContainerClass = (field: ActiveField) => {
+    const task = activePolishTask.value;
+    const isActive = !!task && task.field === field;
+    const selectionLength = typeof task?.selectionSnapshot === 'string'
+        ? task.selectionSnapshot.length
+        : typeof task?.contextData === 'string'
+            ? task.contextData.length
+            : 0;
+    return {
+        'ai-polish-preview-active': isActive,
+        'ai-polish-static': isActive && selectionLength > POLISH_ANIMATION_MAX_CHARS,
+    };
+};
+
 const openEditorField = (field: ActiveField) => {
+    cancelPolishSelectionIfNeeded(field);
     captureRatio(field, 'preview');
     if (field === 'summary') {
         summaryPreview.value = false;
@@ -420,6 +514,30 @@ const emitChange = (field: keyof NodeData, value: string) => {
 
 const emitSave = (field: keyof NodeData, value: string) => {
     emit('save', props.node.id, field, value);
+};
+
+const dismissInlineNotice = () => {
+    if (inlineNoticeTimer) {
+        clearTimeout(inlineNoticeTimer);
+        inlineNoticeTimer = null;
+    }
+    inlineNotice.value = {
+        visible: false,
+        title: '',
+        field: null,
+    };
+};
+
+const showInlineNotice = (field: ActiveField, title: string) => {
+    dismissInlineNotice();
+    inlineNotice.value = {
+        visible: true,
+        title,
+        field,
+    };
+    inlineNoticeTimer = setTimeout(() => {
+        dismissInlineNotice();
+    }, 2200);
 };
 
 // Markdown Logic
@@ -469,6 +587,7 @@ const setPreviewMode = (mode: 'edit' | 'preview') => {
         return;
     }
 
+    cancelPolishSelectionIfNeeded(field);
     captureRatio(field, 'preview');
     if (field === 'summary') {
         summaryPreview.value = false;
@@ -478,11 +597,52 @@ const setPreviewMode = (mode: 'edit' | 'preview') => {
     void restoreRatio(field, 'edit', true);
 };
 
-const getPreviewHtml = (markdown: string) => {
+const POLISH_SELECTION_START_TOKEN = 'POLISH_SELECTION_START_TOKEN';
+const POLISH_SELECTION_END_TOKEN = 'POLISH_SELECTION_END_TOKEN';
+const POLISH_ANIMATION_MAX_CHARS = 240;
+
+const applyPolishHighlightToMarkdown = (field: ActiveField, markdown: string) => {
+    const task = activePolishTask.value;
+    if (!task || task.field !== field) {
+        return markdown;
+    }
+
+    const start = task.selectionStart;
+    const end = task.selectionEnd;
+    const snapshot = task.selectionSnapshot ?? task.contextData ?? '';
+
+    if (typeof start !== 'number' || typeof end !== 'number') {
+        return markdown;
+    }
+    if (start < 0 || end <= start || end > markdown.length) {
+        return markdown;
+    }
+    if (!snapshot || markdown.slice(start, end) !== snapshot) {
+        return markdown;
+    }
+
+    if (markdown.includes(POLISH_SELECTION_START_TOKEN) || markdown.includes(POLISH_SELECTION_END_TOKEN)) {
+        return markdown;
+    }
+
+    return `${markdown.slice(0, start)}${POLISH_SELECTION_START_TOKEN}${markdown.slice(start, end)}${POLISH_SELECTION_END_TOKEN}${markdown.slice(end)}`;
+};
+
+const getPreviewHtml = (field: ActiveField, markdown: string) => {
     try {
         if (!markdown) return '<p class="text-slate-300 italic">Empty...</p>';
-        const raw = marked.parse(markdown);
-        return typeof raw === 'string' ? raw : String(raw);
+
+        const highlightedMarkdown = applyPolishHighlightToMarkdown(field, markdown);
+        const raw = marked.parse(highlightedMarkdown);
+        const html = typeof raw === 'string' ? raw : String(raw);
+
+        if (highlightedMarkdown === markdown) {
+            return html;
+        }
+
+        return html
+            .replace(POLISH_SELECTION_START_TOKEN, '<mark class="ai-polish-highlight" data-ai-polish="active">')
+            .replace(POLISH_SELECTION_END_TOKEN, '</mark>');
     } catch (e) {
         return 'Error rendering markdown';
     }
@@ -536,7 +696,12 @@ const startContentGen = () => {
 };
 
 const startPolishSelection = () => {
-    const textarea = activeField.value === 'summary' ? summaryRef.value : contentRef.value;
+    const selectedField = activeField.value;
+    if (!selectedField) {
+        return;
+    }
+
+    const textarea = selectedField === 'summary' ? summaryRef.value : contentRef.value;
     if(!textarea) return;
     
     const start = textarea.selectionStart;
@@ -544,7 +709,7 @@ const startPolishSelection = () => {
     const text = textarea.value.substring(start, end);
     
     if(!text || text.trim().length === 0) {
-        alert("Please select some text to polish.");
+        showInlineNotice(selectedField, '请先选择文本');
         return;
     }
     
@@ -552,10 +717,17 @@ const startPolishSelection = () => {
         id: Date.now().toString(),
         type: 'POLISH_SELECTION',
         nodeId: props.node.id,
-        field: activeField.value || 'content',
+        field: selectedField,
         contextData: text,
+        selectionStart: start,
+        selectionEnd: end,
+        selectionSnapshot: text,
+        selectionFieldTextSnapshot: textarea.value,
         status: 'IDLE'
     });
+
+    textarea.blur();
+    switchFieldToPreview(selectedField);
 };
 
 onMounted(() => {
@@ -564,6 +736,10 @@ onMounted(() => {
 
 onUnmounted(() => {
     document.removeEventListener('mousedown', handleClickOutside);
+    if (inlineNoticeTimer) {
+        clearTimeout(inlineNoticeTimer);
+        inlineNoticeTimer = null;
+    }
 });
 </script>
 

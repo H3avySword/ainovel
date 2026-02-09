@@ -19,50 +19,10 @@
       </button>
     </div>
 
-    <div
-      class="absolute top-[44px] left-0 right-0 z-40 pointer-events-none px-3 flex flex-col items-center gap-2"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <transition-group
-        enter-active-class="transition duration-300 ease-out"
-        enter-from-class="opacity-0 -translate-y-2 scale-95"
-        enter-to-class="opacity-100 translate-y-0 scale-100"
-        leave-active-class="transition duration-200 ease-in"
-        leave-from-class="opacity-100 translate-y-0 scale-100"
-        leave-to-class="opacity-0 -translate-y-2 scale-95"
-        move-class="transition duration-300 ease-out"
-      >
-        <div
-          v-for="notice in notices"
-          :key="notice.id"
-          class="pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-full shadow-lg backdrop-blur-sm shadow-black/5 w-fit max-w-full justify-center"
-          :class="notice.type === 'success'
-            ? 'bg-emerald-500/85 text-white'
-            : notice.type === 'error'
-              ? 'bg-rose-500/85 text-white'
-              : 'bg-indigo-500/85 text-white'"
-        >
-          <CheckCircle2 v-if="notice.type === 'success'" :size="16" class="text-white shrink-0" />
-          <CircleAlert v-else-if="notice.type === 'error'" :size="16" class="text-white shrink-0" />
-          <Info v-else :size="16" class="text-white shrink-0" />
-          
-          <span class="text-xs font-medium truncate">{{ notice.title }}</span>
-          <!-- Optional: show message if it's short, or just title for simplicity as requested 'concise' -->
-          <span v-if="notice.message && notice.message !== notice.title" class="text-xs opacity-90 truncate max-w-[150px] border-l border-white/20 pl-2 ml-1">
-              {{ notice.message }}
-          </span>
-
-          <button
-            class="ml-1 p-0.5 rounded hover:bg-white/20 transition-colors shrink-0"
-            @click="dismissNotice(notice.id)"
-            aria-label="Dismiss notice"
-          >
-            <X :size="14" class="text-white" />
-          </button>
-        </div>
-      </transition-group>
-    </div>
+    <NoticeStack
+      :items="notices"
+      :dismiss="dismissNotice"
+    />
 
     <!-- Config Menu Overlay -->
     <div
@@ -254,10 +214,12 @@
 import { ref, watch, onUnmounted, nextTick, computed } from 'vue';
 import {
   Send, Sparkles, Loader2, Bot, Settings,
-  X, ChevronDown, CheckCircle2, CircleAlert, Info, KeyRound, Save
+  X, ChevronDown, CheckCircle2, KeyRound, Save
 } from 'lucide-vue-next';
 import CustomSelect from './CustomSelect.vue';
+import NoticeStack from './NoticeStack.vue';
 import { ChatMessage, NodeMap, ProjectMode, AppConfig, WritingTask, TaskType } from '../types';
+import { useNoticeQueue } from '../composables/noticeQueue';
 import { generateWritingAssistantResponse } from '../services/geminiService';
 import {
     connectProvider,
@@ -347,13 +309,6 @@ const isConnecting = ref(false);
 const isLoadingModels = ref(false);
 const connectionState = ref<'idle' | 'connecting' | 'connected' | 'error'>('idle');
 const hasCheckedInitialProviderSetup = ref(false);
-type NoticeType = 'success' | 'error' | 'info';
-type NoticeItem = {
-    id: number;
-    type: NoticeType;
-    title: string;
-    message: string;
-};
 type ProviderCachePayload = {
     providerId: ProviderId;
     source: string;
@@ -374,8 +329,12 @@ type ProviderStatusLike = {
     selected_model?: string;
 };
 
-const notices = ref<NoticeItem[]>([]);
-const noticeTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const {
+    notices,
+    openNotice,
+    dismissNotice,
+    clearNotices,
+} = useNoticeQueue();
 const providerStatusMemory = new Map<ProviderId, ProviderStatusLike>();
 
 const configMenuRef = ref<HTMLDivElement | null>(null);
@@ -508,29 +467,6 @@ const clearProviderCache = async (providerId: ProviderId) => {
     } catch (error) {
         console.warn('Failed to clear provider cache:', error);
     }
-};
-
-const openNotice = (
-    type: NoticeType,
-    title: string,
-    message: string,
-    duration = 2600
-) => {
-    const id = Date.now() + Math.floor(Math.random() * 1000);
-    notices.value.push({ id, type, title, message });
-    const timer = setTimeout(() => {
-        dismissNotice(id);
-    }, duration);
-    noticeTimers.set(id, timer);
-};
-
-const dismissNotice = (id: number) => {
-    const timer = noticeTimers.get(id);
-    if (timer) {
-        clearTimeout(timer);
-        noticeTimers.delete(id);
-    }
-    notices.value = notices.value.filter((notice) => notice.id !== id);
 };
 
 const applyProviderStatus = (status: {
@@ -1062,8 +998,7 @@ void restorePreferredProvider();
 onUnmounted(() => {
     document.removeEventListener('mousedown', handleClickOutside);
     document.removeEventListener('keydown', handleEscKey);
-    noticeTimers.forEach((timer) => clearTimeout(timer));
-    noticeTimers.clear();
+    clearNotices();
 });
 
 

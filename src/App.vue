@@ -87,6 +87,7 @@
               <Editor
                 v-if="selectedNode"
                 :node="selectedNode"
+                :activeTask="activeTask"
                 :projectMode="projectMode"
                 :isSplitModalOpen="isSplitModalOpen"
                 :isSplitGenerating="isSplitGenerating"
@@ -99,6 +100,7 @@
                 @change="handleChange"
                 @save="handleEditorSave"
                 @start-ai-task="handleStartAiTask"
+                @cancel-polish-selection="handleCancelPolishSelection"
                 @open-split-modal="handleOpenSplitModal"
                 @close-split-modal="handleCloseSplitModal"
                 @update-split-chapter-count="handleUpdateSplitChapterCount"
@@ -133,6 +135,12 @@
           />
         </div>
     </div>
+
+    <NoticeStack
+      :items="notices"
+      :dismiss="dismissNotice"
+      container-class="fixed top-4 left-0 right-0 z-[260] pointer-events-none px-3 flex flex-col items-center gap-2"
+    />
 
     <!-- NEW NOVEL MODAL -->
     <div v-if="showNewModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300">
@@ -242,12 +250,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { NodeMap, NodeType, ProjectMode, NodeData, AppConfig, WritingTask, SplitNodeItem } from './types';
+import { NodeMap, NodeType, ProjectMode, NodeData, AppConfig, WritingTask, SplitNodeItem, NoticeType } from './types';
 import type { ProviderId } from './services/providerConnectionService';
 import TitleBar from './components/TitleBar.vue';
 import TreeSidebar from './components/TreeSidebar.vue';
 import Editor from './components/Editor.vue';
 import AIChatPanel from './components/AIChatPanel.vue';
+import NoticeStack from './components/NoticeStack.vue';
+import { useNoticeQueue } from './composables/noticeQueue';
 import {
   SidebarClose, SidebarOpen, BookText, ScrollText, X as CloseIcon, Loader2,
   AlertTriangle, Trash2, Info, CheckCircle2
@@ -345,6 +355,7 @@ let removeProjectStateChangedListener: (() => void) | null = null;
 let syncSelectedNodeTimer: ReturnType<typeof setTimeout> | null = null;
 let nodeFieldLoadSeq = 0;
 const isProjectStateReady = ref(false);
+const { notices, openNotice, dismissNotice } = useNoticeQueue();
 
 const confirmModalState = ref({
     isOpen: false,
@@ -489,6 +500,10 @@ const getErrorMessage = (res: any, fallback: string) => {
   if (typeof res.error === 'string') return res.error;
   if (res.error?.message) return res.error.message;
   return fallback;
+};
+
+const openAppNotice = (type: NoticeType, title: string, message?: string) => {
+    openNotice(type, title, message);
 };
 
 const applyProjectState = (data: any) => {
@@ -717,11 +732,11 @@ const createNewProject = async (mode: ProjectMode) => {
                 await syncProjectStateFromMain(dirPath);
                 showNewModal.value = false;
             } else {
-                alert("创建项目结构失败，请检查目录权限。");
+                openAppNotice('error', '创建项目失败');
             }
         } catch (error) {
             console.error("Failed to create new project:", error);
-            alert("创建项目出错。");
+            openAppNotice('error', '创建项目异常');
         }
     }
 };
@@ -733,7 +748,7 @@ const handleSaveNovel = async () => {
         expectedRevision: projectRevision.value
     });
     if (!res?.success || !res?.data) {
-        alert(getErrorMessage(res, '保存失败，请稍后重试。'));
+        openAppNotice('error', '保存失败');
         return;
     }
     applyProjectState(res.data);
@@ -751,13 +766,13 @@ const handleImportClick = async () => {
             await syncProjectStateFromMain(dirPath);
         } catch (err) {
             console.error("Import failed:", err);
-            alert("导入失败，文件可能已损坏。");
+            openAppNotice('error', '导入失败');
         }
     }
 };
 
-const handleFileImport = (event: Event) => {
-    alert("请使用‘打开文件夹’功能加载新版项目结构。");
+const handleFileImport = (_event: Event) => {
+    openAppNotice('info', '请使用“打开文件夹”');
 };
 
 // --- Confirm Modal Actions ---
@@ -824,7 +839,7 @@ const handleAdd = async (parentId: string, type: NodeType) => {
         expectedRevision: projectRevision.value
     });
     if (!res?.success || !res?.data) {
-        alert(getErrorMessage(res, '新增节点失败。'));
+        openAppNotice('error', '新增节点失败');
         return;
     }
     applyProjectState(res.data);
@@ -833,7 +848,7 @@ const handleAdd = async (parentId: string, type: NodeType) => {
 const handleDelete = async (id: string) => {
     const nodeToDelete = nodes.value[id];
     if (!nodeToDelete || !nodeToDelete.parentId) {
-        alert("不能删除根节点。");
+        openAppNotice('info', '根节点不能删除');
         return;
     }
 
@@ -851,7 +866,7 @@ const handleDelete = async (id: string) => {
                  expectedRevision: projectRevision.value
              });
              if (!res?.success || !res?.data) {
-                 alert(getErrorMessage(res, '删除节点失败。'));
+                 openAppNotice('error', '删除节点失败');
                  return;
              }
              applyProjectState(res.data);
@@ -1028,19 +1043,57 @@ const handleStartAiTask = (task: WritingTask) => {
     isRightSidebarOpen.value = true;
 };
 
-const handleApplyAiTask = (content: string) => {
-    if (!activeTask.value) return;
+const handleCancelPolishSelection = (payload: { nodeId: string; field: 'summary' | 'content' }) => {
+    const task = activeTask.value;
+    if (!task || task.type !== 'POLISH_SELECTION') return;
+    if (task.nodeId !== payload.nodeId || task.field !== payload.field) return;
+    activeTask.value = null;
+};
 
-    const { nodeId, field, type } = activeTask.value;
-    
-    if (nodes.value[nodeId]) {
-        if (type === 'POLISH_SELECTION') {
-             // Handle polish selection if needed
-        } else {
-             // Direct Field Update
-             handleEditorSave(nodeId, field, content);
-        }
+const handleApplyAiTask = async (content: string) => {
+    const task = activeTask.value;
+    if (!task) return;
+
+    const { nodeId, field, type } = task;
+    const node = nodes.value[nodeId];
+    if (!node) {
+        openAppNotice('error', '应用失败');
+        activeTask.value = null;
+        return;
     }
+
+    if (type !== 'POLISH_SELECTION') {
+        await handleEditorSave(nodeId, field, content);
+        activeTask.value = null;
+        return;
+    }
+
+    const start = task.selectionStart;
+    const end = task.selectionEnd;
+    const selectionSnapshot = task.selectionSnapshot ?? task.contextData ?? '';
+    const currentText = (node[field] || '') as string;
+
+    if (typeof start !== 'number' || typeof end !== 'number' || start < 0 || end <= start || end > currentText.length) {
+        openAppNotice('info', '选区已失效');
+        activeTask.value = null;
+        return;
+    }
+
+    if (typeof task.selectionFieldTextSnapshot === 'string' && task.selectionFieldTextSnapshot !== currentText) {
+        openAppNotice('info', '选区已失效');
+        activeTask.value = null;
+        return;
+    }
+
+    const currentSlice = currentText.slice(start, end);
+    if (!selectionSnapshot || currentSlice !== selectionSnapshot) {
+        openAppNotice('info', '选区已失效');
+        activeTask.value = null;
+        return;
+    }
+
+    const replacedText = `${currentText.slice(0, start)}${content}${currentText.slice(end)}`;
+    await handleEditorSave(nodeId, field, replacedText);
     activeTask.value = null;
 };
 
