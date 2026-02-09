@@ -60,3 +60,6 @@ data/provider_settings.json
 AGENTS.md
 GEMINI.md
 CLAUDE.md
+
+# Local release automation
+scripts/local/
