@@ -119,7 +119,8 @@
 
         <!-- RIGHT SIDEBAR -->
         <div
-          class="transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 bg-white z-10 shadow-[-5px_0_30px_-5px_rgba(0,0,0,0.03)]"
+          data-testid="right-sidebar"
+          class="transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 min-w-0 bg-white z-10 shadow-[-5px_0_30px_-5px_rgba(0,0,0,0.03)]"
           :class="isRightSidebarOpen ? 'w-72 lg:w-80' : 'w-0'"
         >
           <AIChatPanel

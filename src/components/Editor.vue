@@ -5,12 +5,12 @@
     <div
       ref="toolbarRef"
       class="absolute top-0 left-0 right-0 z-50 flex justify-center px-2 transition-all duration-200 ease-out"
-      :class="activeField ? 'translate-y-2 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'"
+      :class="activeField === 'summary' ? 'translate-y-2 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'"
     >
       <div class="w-fit max-w-full rounded-2xl border border-slate-200 bg-white/90 px-2 py-1 shadow-xl shadow-slate-200/50 backdrop-blur-md">
         <div class="inline-flex items-center gap-0.5 whitespace-nowrap">
         <div class="flex items-center gap-0.5 px-1.5 mr-1.5 border-r border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wide select-none">
-          {{ activeField === 'summary' ? 'Synopsis' : 'Content' }}
+          Synopsis
         </div>
 
           <button @mousedown.prevent @click="insertMarkdown('**', '**')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Bold"><Bold :size="17" :stroke-width="2.5" /></button>
@@ -147,8 +147,10 @@
             <textarea
               v-else
               ref="summaryRef"
+              data-testid="summary-textarea"
               :value="node.summary || ''"
               @focus="handleEditorFocus('summary')"
+              @contextmenu="(e) => handleTextareaContextMenu(e as MouseEvent, 'summary')"
               @scroll="handleEditorScroll('summary')"
               @input="(e) => handleEditorInput('summary', (e.target as HTMLTextAreaElement).value)"
               @blur="(e) => handleEditorBlur('summary', (e.target as HTMLTextAreaElement).value)"
@@ -203,20 +205,12 @@
             <div class="absolute top-2 right-2 z-10 text-[10px] text-slate-400 font-mono bg-slate-100/50 backdrop-blur-sm px-2 py-0.5 rounded-full select-none pointer-events-none transition-opacity opacity-50 group-hover/editor:opacity-100">
                {{ (node.content || '').length }} Words
             </div>
-            <div
-              v-if="contentPreview"
-              ref="contentPreviewRef"
-              class="prose prose-slate prose-lg max-w-none font-serif prose-headings:font-sans prose-headings:font-bold prose-p:leading-loose prose-blockquote:border-indigo-300 prose-blockquote:bg-indigo-50/30 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic h-[600px] overflow-y-auto custom-scrollbar cursor-pointer p-4 rounded-xl bg-slate-50/50"
-              :class="getPreviewContainerClass('content')"
-              @scroll="handlePreviewScroll('content')"
-              @click="openEditorField('content')"
-              v-html="getPreviewHtml('content', node.content || '')"
-            ></div>
             <textarea
-              v-else
               ref="contentRef"
+              data-testid="content-textarea"
               :value="node.content || ''"
               @focus="handleEditorFocus('content')"
+              @contextmenu="(e) => handleTextareaContextMenu(e as MouseEvent, 'content')"
               @scroll="handleEditorScroll('content')"
               @input="(e) => handleEditorInput('content', (e.target as HTMLTextAreaElement).value)"
               @blur="(e) => handleEditorBlur('content', (e.target as HTMLTextAreaElement).value)"
@@ -229,6 +223,15 @@
       </div>
     </div>
   </div>
+
+  <TextareaContextMenu
+    :isOpen="textareaMenuState.isOpen"
+    :x="textareaMenuState.x"
+    :y="textareaMenuState.y"
+    :items="textareaMenuItems"
+    @close="closeTextareaMenu"
+    @select="handleTextareaMenuSelect"
+  />
 
   <SplitNodeDialog
     :isOpen="isSplitModalOpen"
@@ -246,10 +249,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { NodeData, NodeType, WritingTask, SplitNodeItem, ProjectMode, NoticeType } from '../types';
 import { marked } from 'marked';
 import SplitNodeDialog from './SplitNodeDialog.vue';
+import TextareaContextMenu from './TextareaContextMenu.vue';
+import { useTextareaContextMenu } from '../composables/useTextareaContextMenu';
 import {
   Bold, Italic, Heading1, Heading2, Quote, List, ListOrdered,
   Eye, Pencil, Code, Minus, Type, ChevronDown, ChevronRight,
@@ -295,7 +300,7 @@ const emit = defineEmits<{
 const showSummary = ref(true);
 const showContent = ref(true);
 const activeField = ref<'summary' | 'content' | null>(null);
-const summaryPreview = ref(false);
+const summaryPreview = ref(true);
 const contentPreview = ref(false);
 
 const summaryRef = ref<HTMLTextAreaElement | null>(null);
@@ -304,6 +309,13 @@ const summaryPreviewRef = ref<HTMLDivElement | null>(null);
 const contentPreviewRef = ref<HTMLDivElement | null>(null);
 const toolbarRef = ref<HTMLDivElement | null>(null);
 const editorScrollRef = ref<HTMLDivElement | null>(null);
+const {
+    menuState: textareaMenuState,
+    menuItems: textareaMenuItems,
+    openFromEvent: openTextareaMenuFromEvent,
+    closeMenu: closeTextareaMenu,
+    runAction: runTextareaMenuAction,
+} = useTextareaContextMenu();
 
 type ActiveField = 'summary' | 'content';
 type ScrollMode = 'edit' | 'preview';
@@ -353,6 +365,26 @@ const getTextareaByField = (field: ActiveField) => {
 
 const getPreviewScrollElementByField = (field: ActiveField) => {
     return field === 'summary' ? summaryPreviewRef.value : contentPreviewRef.value;
+};
+
+const handleTextareaContextMenu = (event: MouseEvent, field: ActiveField) => {
+    const target = getTextareaByField(field);
+    if (!target) {
+        return;
+    }
+
+    activeField.value = field;
+    openTextareaMenuFromEvent(event, target, {
+        showPolish: true,
+        supportsPolish: true,
+        onPolish: (textarea) => {
+            startPolishSelectionByField(field, textarea);
+        },
+    });
+};
+
+const handleTextareaMenuSelect = async (actionId: string) => {
+    await runTextareaMenuAction(actionId as 'cut' | 'copy' | 'paste' | 'select-all' | 'polish');
 };
 
 const clamp = (value: number, min: number, max: number) => {
@@ -453,10 +485,10 @@ const switchFieldToPreview = (field: ActiveField) => {
     captureRatio(field, 'edit');
     if (field === 'summary') {
         summaryPreview.value = true;
+        void restoreRatio(field, 'preview');
     } else {
-        contentPreview.value = true;
+        contentPreview.value = false;
     }
-    void restoreRatio(field, 'preview');
     activeField.value = null;
 };
 
@@ -505,7 +537,26 @@ const handleEditorInput = (field: ActiveField, value: string) => {
 
 const handleEditorBlur = (field: ActiveField, value: string) => {
     captureRatio(field, 'edit');
-    emitSave(field, value);
+    const textarea = getTextareaByField(field);
+    const stateValue = field === 'summary'
+        ? (props.node.summary || '')
+        : (props.node.content || '');
+    const blurValue = textarea?.value ?? value ?? '';
+    const valueToSave = blurValue === '' && stateValue !== '' ? stateValue : blurValue;
+    emitSave(field, valueToSave);
+    requestAnimationFrame(() => {
+        const activeTextarea = getTextareaByField(field);
+        if (!activeTextarea) {
+            return;
+        }
+        if (document.activeElement === activeTextarea) {
+            return;
+        }
+        if (activeField.value !== field) {
+            return;
+        }
+        switchFieldToPreview(field);
+    });
 };
 
 const emitChange = (field: keyof NodeData, value: string) => {
@@ -577,13 +628,7 @@ const setPreviewMode = (mode: 'edit' | 'preview') => {
     const toPreview = mode === 'preview';
 
     if (toPreview) {
-        captureRatio(field, 'edit');
-        if (field === 'summary') {
-            summaryPreview.value = true;
-        } else {
-            contentPreview.value = true;
-        }
-        void restoreRatio(field, 'preview');
+        switchFieldToPreview(field);
         return;
     }
 
@@ -601,48 +646,206 @@ const POLISH_SELECTION_START_TOKEN = 'POLISH_SELECTION_START_TOKEN';
 const POLISH_SELECTION_END_TOKEN = 'POLISH_SELECTION_END_TOKEN';
 const POLISH_ANIMATION_MAX_CHARS = 240;
 
-const applyPolishHighlightToMarkdown = (field: ActiveField, markdown: string) => {
-    const task = activePolishTask.value;
-    if (!task || task.field !== field) {
-        return markdown;
-    }
+type HighlightRange = {
+    start: number;
+    end: number;
+};
 
+type HighlightMarkers = {
+    start: string;
+    end: string;
+};
+
+type HighlightInjectionResult = {
+    markdown: string;
+    markers: HighlightMarkers | null;
+};
+
+const resolveHighlightRange = (markdown: string, task: WritingTask): HighlightRange | null => {
     const start = task.selectionStart;
     const end = task.selectionEnd;
     const snapshot = task.selectionSnapshot ?? task.contextData ?? '';
 
     if (typeof start !== 'number' || typeof end !== 'number') {
-        return markdown;
+        return null;
     }
     if (start < 0 || end <= start || end > markdown.length) {
-        return markdown;
+        return null;
     }
     if (!snapshot || markdown.slice(start, end) !== snapshot) {
-        return markdown;
+        return null;
     }
 
-    if (markdown.includes(POLISH_SELECTION_START_TOKEN) || markdown.includes(POLISH_SELECTION_END_TOKEN)) {
-        return markdown;
+    return { start, end };
+};
+
+const createHighlightMarkers = (markdown: string): HighlightMarkers => {
+    let startMarker = '';
+    let endMarker = '';
+
+    do {
+        const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        startMarker = `${POLISH_SELECTION_START_TOKEN}_${nonce}`;
+        endMarker = `${POLISH_SELECTION_END_TOKEN}_${nonce}`;
+    } while (markdown.includes(startMarker) || markdown.includes(endMarker));
+
+    return {
+        start: startMarker,
+        end: endMarker,
+    };
+};
+
+const applyPolishHighlightToMarkdown = (field: ActiveField, markdown: string): HighlightInjectionResult => {
+    const task = activePolishTask.value;
+    if (!task || task.field !== field) {
+        return {
+            markdown,
+            markers: null,
+        };
     }
 
-    return `${markdown.slice(0, start)}${POLISH_SELECTION_START_TOKEN}${markdown.slice(start, end)}${POLISH_SELECTION_END_TOKEN}${markdown.slice(end)}`;
+    const range = resolveHighlightRange(markdown, task);
+    if (!range) {
+        return {
+            markdown,
+            markers: null,
+        };
+    }
+
+    const markers = createHighlightMarkers(markdown);
+    return {
+        markdown: `${markdown.slice(0, range.start)}${markers.start}${markdown.slice(range.start, range.end)}${markers.end}${markdown.slice(range.end)}`,
+        markers,
+    };
+};
+
+const stripHighlightMarkers = (html: string, markers: HighlightMarkers) => {
+    return html
+        .split(markers.start).join('')
+        .split(markers.end).join('');
+};
+
+const collectTextNodes = (root: Node) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    while (walker.nextNode()) {
+        const current = walker.currentNode;
+        if (current instanceof Text) {
+            textNodes.push(current);
+        }
+    }
+    return textNodes;
+};
+
+const extractMarkerBoundary = (textNodes: Text[], marker: string) => {
+    for (const node of textNodes) {
+        const value = node.nodeValue || '';
+        const index = value.indexOf(marker);
+        if (index < 0) {
+            continue;
+        }
+
+        node.nodeValue = `${value.slice(0, index)}${value.slice(index + marker.length)}`;
+        return {
+            node,
+            offset: index,
+        };
+    }
+    return null;
+};
+
+const applyPolishHighlightToHtml = (html: string, markers: HighlightMarkers | null) => {
+    if (!markers) {
+        return html;
+    }
+    if (!html.includes(markers.start) || !html.includes(markers.end)) {
+        return html;
+    }
+    if (typeof document === 'undefined') {
+        return stripHighlightMarkers(html, markers);
+    }
+
+    const container = document.createElement('div');
+    container.innerHTML = html;
+
+    const textNodes = collectTextNodes(container);
+    const startBoundary = extractMarkerBoundary(textNodes, markers.start);
+    const endBoundary = extractMarkerBoundary(textNodes, markers.end);
+
+    if (!startBoundary || !endBoundary) {
+        return stripHighlightMarkers(html, markers);
+    }
+    if (startBoundary.node === endBoundary.node && endBoundary.offset <= startBoundary.offset) {
+        return stripHighlightMarkers(html, markers);
+    }
+
+    const range = document.createRange();
+    range.setStart(startBoundary.node, startBoundary.offset);
+    range.setEnd(endBoundary.node, endBoundary.offset);
+
+    const segments: Array<{ node: Text; start: number; end: number }> = [];
+    for (const node of textNodes) {
+        const value = node.nodeValue || '';
+        if (!value) {
+            continue;
+        }
+        if (!range.intersectsNode(node)) {
+            continue;
+        }
+
+        const segmentStart = node === startBoundary.node ? startBoundary.offset : 0;
+        const segmentEnd = node === endBoundary.node ? endBoundary.offset : value.length;
+        if (segmentEnd <= segmentStart) {
+            continue;
+        }
+
+        segments.push({
+            node,
+            start: segmentStart,
+            end: segmentEnd,
+        });
+    }
+
+    for (let i = segments.length - 1; i >= 0; i -= 1) {
+        const { node, start, end } = segments[i];
+        const value = node.nodeValue || '';
+        if (!value) {
+            continue;
+        }
+
+        const before = value.slice(0, start);
+        const target = value.slice(start, end);
+        const after = value.slice(end);
+
+        const fragment = document.createDocumentFragment();
+        if (before) {
+            fragment.appendChild(document.createTextNode(before));
+        }
+        if (target) {
+            const mark = document.createElement('mark');
+            mark.className = 'ai-polish-highlight';
+            mark.dataset.aiPolish = 'active';
+            mark.textContent = target;
+            fragment.appendChild(mark);
+        }
+        if (after) {
+            fragment.appendChild(document.createTextNode(after));
+        }
+
+        node.parentNode?.replaceChild(fragment, node);
+    }
+
+    return container.innerHTML;
 };
 
 const getPreviewHtml = (field: ActiveField, markdown: string) => {
     try {
         if (!markdown) return '<p class="text-slate-300 italic">Empty...</p>';
 
-        const highlightedMarkdown = applyPolishHighlightToMarkdown(field, markdown);
-        const raw = marked.parse(highlightedMarkdown);
+        const injectionResult = applyPolishHighlightToMarkdown(field, markdown);
+        const raw = marked.parse(injectionResult.markdown);
         const html = typeof raw === 'string' ? raw : String(raw);
-
-        if (highlightedMarkdown === markdown) {
-            return html;
-        }
-
-        return html
-            .replace(POLISH_SELECTION_START_TOKEN, '<mark class="ai-polish-highlight" data-ai-polish="active">')
-            .replace(POLISH_SELECTION_END_TOKEN, '</mark>');
+        return applyPolishHighlightToHtml(html, injectionResult.markers);
     } catch (e) {
         return 'Error rendering markdown';
     }
@@ -650,12 +853,14 @@ const getPreviewHtml = (field: ActiveField, markdown: string) => {
 
 // Click Outside Logic
 const handleClickOutside = (event: MouseEvent) => {
+    const targetElement = event.target as HTMLElement | null;
+    if (targetElement?.closest('[data-testid="textarea-context-menu"]')) return;
     const target = event.target as Node;
     if (toolbarRef.value && toolbarRef.value.contains(target)) return;
     if (summaryRef.value && summaryRef.value.contains(target)) return;
     if (contentRef.value && contentRef.value.contains(target)) return;
 
-    // 澶卞幓鐒︾偣鏃惰嚜鍔ㄥ垏鎹㈠埌棰勮妯″紡
+    // When focus leaves the editor area, return fields to preview state.
     if (activeField.value === 'summary') {
         const sourceMode: ScrollMode = summaryPreview.value ? 'preview' : 'edit';
         captureRatio('summary', sourceMode);
@@ -664,12 +869,8 @@ const handleClickOutside = (event: MouseEvent) => {
             void restoreRatio('summary', 'preview');
         }
     } else if (activeField.value === 'content') {
-        const sourceMode: ScrollMode = contentPreview.value ? 'preview' : 'edit';
-        captureRatio('content', sourceMode);
-        if (!contentPreview.value) {
-            contentPreview.value = true;
-            void restoreRatio('content', 'preview');
-        }
+        captureRatio('content', 'edit');
+        contentPreview.value = false;
     }
     activeField.value = null;
 };
@@ -695,24 +896,20 @@ const startContentGen = () => {
     });
 };
 
-const startPolishSelection = () => {
-    const selectedField = activeField.value;
-    if (!selectedField) {
+const startPolishSelectionByField = (selectedField: ActiveField, textarea: HTMLTextAreaElement | null) => {
+    if (!textarea) {
         return;
     }
 
-    const textarea = selectedField === 'summary' ? summaryRef.value : contentRef.value;
-    if(!textarea) return;
-    
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const text = textarea.value.substring(start, end);
-    
-    if(!text || text.trim().length === 0) {
+
+    if (!text || text.trim().length === 0) {
         showInlineNotice(selectedField, '请先选择文本');
         return;
     }
-    
+
     emit('start-ai-task', {
         id: Date.now().toString(),
         type: 'POLISH_SELECTION',
@@ -727,8 +924,37 @@ const startPolishSelection = () => {
     });
 
     textarea.blur();
-    switchFieldToPreview(selectedField);
+    if (selectedField === 'summary') {
+        switchFieldToPreview(selectedField);
+    } else {
+        contentPreview.value = false;
+        activeField.value = null;
+    }
 };
+
+const startPolishSelection = () => {
+    const selectedField = activeField.value;
+    if (!selectedField) {
+        return;
+    }
+
+    const textarea = selectedField === 'summary' ? summaryRef.value : contentRef.value;
+    startPolishSelectionByField(selectedField, textarea);
+};
+
+watch(
+    () => props.node.id,
+    () => {
+        activeField.value = null;
+        summaryPreview.value = true;
+        contentPreview.value = false;
+        scrollRatios.value = {
+            summary: 0,
+            content: 0,
+        };
+        dismissInlineNotice();
+    }
+);
 
 onMounted(() => {
     document.addEventListener('mousedown', handleClickOutside);

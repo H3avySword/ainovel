@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col bg-white border-l border-indigo-100 shadow-xl shadow-indigo-100/50 w-full max-w-sm md:w-80 lg:w-96 relative">
+  <div data-testid="ai-chat-panel" class="h-full flex flex-col bg-white border-l border-indigo-100 shadow-xl shadow-indigo-100/50 w-full min-w-0 max-w-none relative">
 
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-4 border-b border-indigo-100 bg-indigo-50/30">
@@ -175,8 +175,11 @@
       <div class="p-4 bg-white border-t border-indigo-100">
         <div class="relative">
             <textarea
+              ref="inputTextareaRef"
+              data-testid="aichat-input-textarea"
               v-model="input"
               @keydown.enter.exact.prevent="handleSendMessage"
+              @contextmenu="handleInputTextareaContextMenu"
               placeholder="输入您的想法或修改建议..."
               class="w-full pl-4 pr-12 py-3 rounded-xl bg-slate-50 border border-indigo-100 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm text-slate-700 max-h-32 shadow-inner"
               rows="2"
@@ -207,6 +210,14 @@
       </div>
     </div>
 
+    <TextareaContextMenu
+      :isOpen="textareaMenuState.isOpen"
+      :x="textareaMenuState.x"
+      :y="textareaMenuState.y"
+      :items="textareaMenuItems"
+      @close="closeTextareaMenu"
+      @select="handleTextareaMenuSelect"
+    />
   </div>
 </template>
 
@@ -218,8 +229,10 @@ import {
 } from 'lucide-vue-next';
 import CustomSelect from './CustomSelect.vue';
 import NoticeStack from './NoticeStack.vue';
+import TextareaContextMenu from './TextareaContextMenu.vue';
 import { ChatMessage, NodeMap, ProjectMode, AppConfig, WritingTask, TaskType } from '../types';
 import { useNoticeQueue } from '../composables/noticeQueue';
+import { useTextareaContextMenu } from '../composables/useTextareaContextMenu';
 import { generateWritingAssistantResponse } from '../services/geminiService';
 import {
     connectProvider,
@@ -257,6 +270,14 @@ const messages = ref<ChatMessage[]>([
 const input = ref('');
 const isLoading = ref(false);
 const messagesEndRef = ref<HTMLDivElement | null>(null);
+const inputTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const {
+    menuState: textareaMenuState,
+    menuItems: textareaMenuItems,
+    openFromEvent: openTextareaMenuFromEvent,
+    closeMenu: closeTextareaMenu,
+    runAction: runTextareaMenuAction,
+} = useTextareaContextMenu();
 
 // Configuration State
 type ProviderOption = {
@@ -753,6 +774,22 @@ watch(isConfigOpen, (newVal) => {
         document.removeEventListener('keydown', handleEscKey);
     }
 });
+
+const handleInputTextareaContextMenu = (event: MouseEvent) => {
+    const textarea = inputTextareaRef.value;
+    if (!textarea) {
+        return;
+    }
+
+    openTextareaMenuFromEvent(event, textarea, {
+        showPolish: false,
+        supportsPolish: false,
+    });
+};
+
+const handleTextareaMenuSelect = async (actionId: string) => {
+    await runTextareaMenuAction(actionId as 'cut' | 'copy' | 'paste' | 'select-all' | 'polish');
+};
 
 const handleSendMessage = async () => {
     if (!input.value.trim() || isLoading.value) return;

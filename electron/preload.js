@@ -4,6 +4,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
     close: () => ipcRenderer.send('window-close'),
+    clipboard: {
+        readText: () => ipcRenderer.invoke('clipboard:read-text'),
+        writeText: (text) => ipcRenderer.invoke('clipboard:write-text', text),
+    },
 
     // Project bootstrap
     selectDirectory: () => ipcRenderer.invoke('select-directory'),

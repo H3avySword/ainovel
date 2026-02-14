@@ -10,7 +10,7 @@ import crypto from 'crypto';
 // ESM/CJS Interop for Electron
 // Sometimes electron is default, sometimes namespace.
 const electron = electronModule.default || electronModule;
-const { app, BrowserWindow, ipcMain, dialog } = electron;
+const { app, BrowserWindow, ipcMain, dialog, clipboard } = electron;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -383,6 +383,15 @@ if (ipcMain) {
             token: backendToken,
             isReady: isBackendReady
         };
+    });
+
+    ipcMain.handle('clipboard:read-text', async () => {
+        return clipboard.readText();
+    });
+
+    ipcMain.handle('clipboard:write-text', async (event, text) => {
+        clipboard.writeText(typeof text === 'string' ? text : '');
+        return { ok: true };
     });
 
     ipcMain.on('window-minimize', () => mainWindow?.minimize());
