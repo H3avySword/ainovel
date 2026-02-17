@@ -16,6 +16,7 @@
     "build": {
         "appId": "com.darkicefield.nebulawrite",
         "productName": "NEBULA WRITE",
+        "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
         "directories": {
             "output": "dist"
         },
@@ -58,20 +59,8 @@
                 }
             ],
             "target": [
-                {
-                    "target": "dmg",
-                    "arch": [
-                        "x64",
-                        "arm64"
-                    ]
-                },
-                {
-                    "target": "zip",
-                    "arch": [
-                        "x64",
-                        "arm64"
-                    ]
-                }
+                "dmg",
+                "zip"
             ],
             "category": "public.app-category.productivity"
         }
