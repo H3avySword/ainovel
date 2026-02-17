@@ -1,7 +1,7 @@
 {
     "name": "nebula-write-local",
     "productName": "NEBULA WRITE",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "main": "electron/main.js",
     "type": "module",
     "description": "AI Novel Studio desktop app",
@@ -26,10 +26,6 @@
         ],
         "extraResources": [
             {
-                "from": "backend/dist/backend.exe",
-                "to": "backend/backend.exe"
-            },
-            {
                 "from": "backend",
                 "to": "backend",
                 "filter": [
@@ -44,9 +40,40 @@
             "backend/**"
         ],
         "win": {
+            "extraResources": [
+                {
+                    "from": "backend/dist/backend.exe",
+                    "to": "backend/backend.exe"
+                }
+            ],
             "target": [
                 "nsis"
             ]
+        },
+        "mac": {
+            "extraResources": [
+                {
+                    "from": "backend/dist/backend",
+                    "to": "backend/backend.exe"
+                }
+            ],
+            "target": [
+                {
+                    "target": "dmg",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                },
+                {
+                    "target": "zip",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                }
+            ],
+            "category": "public.app-category.productivity"
         }
     },
     "dependencies": {

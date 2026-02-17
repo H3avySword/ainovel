@@ -26,7 +26,7 @@
           <button @mousedown.prevent @click="insertMarkdown('1. ')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Numbered List"><ListOrdered :size="17" :stroke-width="2.5" /></button>
           <button @mousedown.prevent @click="insertMarkdown('---\n')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Divider"><Minus :size="17" :stroke-width="2.5" /></button>
           <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
-          <button @mousedown.prevent @click="startPolishSelection" class="p-1.5 rounded-lg border border-indigo-100/70 bg-gradient-to-br from-indigo-50 to-fuchsia-50/70 text-indigo-600 shadow-sm shadow-indigo-100/50 hover:from-indigo-100 hover:to-fuchsia-100/80 hover:text-fuchsia-700 transition-all" title="AI Polish Selection"><Sparkles :size="17" :stroke-width="2.5" /></button>
+          <button @mousedown.prevent @click="startPolishSelection" class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm transition-all" title="AI Polish Selection"><Gem :size="17" :stroke-width="2.5" /></button>
           <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
 
         <div class="ml-0.5 rounded-xl bg-slate-100/90 p-1 grid grid-cols-2 gap-0.5 relative isolate">
@@ -259,7 +259,7 @@ import {
   Bold, Italic, Heading1, Heading2, Quote, List, ListOrdered,
   Eye, Pencil, Code, Minus, Type, ChevronDown, ChevronRight,
   ListTree,
-  Wand2, Sparkles, Info, X
+  Wand2, Gem, Info, X
 } from 'lucide-vue-next';
 
 const props = defineProps<{

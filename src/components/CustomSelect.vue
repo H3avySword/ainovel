@@ -33,9 +33,10 @@
                 v-for="option in options"
                 :key="option"
                 @click="select(option)"
-                class="px-3 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between hover:bg-indigo-50 group"
+                @mouseenter="(e) => handleOptionTooltipEnter(e, option)"
+                @mouseleave="hideOptionTooltip"
+                class="relative px-3 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between hover:bg-indigo-50 group"
                 :class="option === modelValue ? 'bg-indigo-50/50 text-indigo-700 font-medium' : 'text-slate-700'"
-                :title="option"
             >
                 <span class="truncate pr-2">{{ option }}</span>
                 <Check v-if="option === modelValue" :size="12" class="text-indigo-600 shrink-0" />
@@ -44,6 +45,13 @@
                 No options available
             </div>
         </div>
+      </div>
+      <div
+        v-if="optionTooltip.visible"
+        class="pointer-events-none fixed z-[10000] whitespace-nowrap rounded-md border border-slate-200/90 bg-white/95 px-2 py-1 text-[11px] font-medium text-slate-700 shadow-lg shadow-slate-200/70"
+        :style="{ left: `${optionTooltip.x}px`, top: `${optionTooltip.y}px`, transform: 'translate(-50%, 0)' }"
+      >
+        {{ optionTooltip.text }}
       </div>
     </Teleport>
   </div>
@@ -67,6 +75,12 @@ const emit = defineEmits<{
 const isOpen = ref(false);
 const containerRef = ref<HTMLDivElement | null>(null);
 const dropdownRef = ref<HTMLDivElement | null>(null);
+const optionTooltip = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  text: '',
+});
 const position = ref({ top: 0, left: 0, width: 0 });
 
 const dropdownStyle = computed(() => ({
@@ -105,31 +119,50 @@ const toggle = async () => {
 
 const select = (option: string) => {
     emit('update:modelValue', option);
+    optionTooltip.value.visible = false;
     isOpen.value = false;
+};
+
+const handleOptionTooltipEnter = (event: MouseEvent, text: string) => {
+    optionTooltip.value = {
+        visible: true,
+        x: event.clientX,
+        y: event.clientY + 20,
+        text,
+    };
+};
+
+const hideOptionTooltip = () => {
+    optionTooltip.value.visible = false;
 };
 
 const close = (e: Event) => {
-    if (!isOpen.value) return;
-    const target = e.target as Node;
+  if (!isOpen.value) return;
+  const target = e.target as Node;
     
     if (containerRef.value && containerRef.value.contains(target)) return;
-    if (dropdownRef.value && dropdownRef.value.contains(target)) return;
-    
-    isOpen.value = false;
+  if (dropdownRef.value && dropdownRef.value.contains(target)) return;
+
+  optionTooltip.value.visible = false;
+  isOpen.value = false;
 };
 
 const handleScroll = (e: Event) => {
-    if (!isOpen.value) return;
+  if (!isOpen.value) return;
     // Close if scrolling happens outside the dropdown
     // This is simple but effective to prevent detached menus
     if (dropdownRef.value && dropdownRef.value.contains(e.target as Node)) {
         return; 
     }
+    optionTooltip.value.visible = false;
     isOpen.value = false;
 };
 
 const handleResize = () => {
-    if (isOpen.value) isOpen.value = false;
+    if (isOpen.value) {
+        optionTooltip.value.visible = false;
+        isOpen.value = false;
+    }
 };
 
 onMounted(() => {

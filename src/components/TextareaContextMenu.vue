@@ -3,10 +3,10 @@
     <div
       v-if="isOpen"
       ref="menuRef"
-      role="menu"
-      tabindex="0"
+      role="toolbar"
+      tabindex="-1"
       data-testid="textarea-context-menu"
-      class="fixed z-[280] min-w-[188px] rounded-xl border border-indigo-100 bg-white p-1.5 shadow-2xl shadow-indigo-100/60 animate-in fade-in zoom-in-95 duration-100 outline-none"
+      class="fixed z-[280] rounded-xl border border-indigo-100 bg-white p-0.5 shadow-2xl shadow-indigo-100/60 animate-in fade-in zoom-in-95 duration-100 outline-none inline-flex items-center gap-px"
       :style="{ left: `${position.x}px`, top: `${position.y}px` }"
       @keydown="handleKeydown"
       @mousedown.stop
@@ -16,21 +16,27 @@
       <template v-for="(item, index) in items" :key="item.id">
         <div
           v-if="item.id === 'polish'"
-          class="my-1 h-px bg-gradient-to-r from-transparent via-indigo-100 to-transparent"
+          class="mx-px h-4 w-px bg-gradient-to-b from-transparent via-indigo-100 to-transparent"
         ></div>
         <button
           type="button"
-          role="menuitem"
+          role="button"
           :disabled="item.disabled"
           :aria-disabled="item.disabled ? 'true' : 'false'"
           :data-testid="`menu-item-${item.id}`"
-          class="w-full rounded-lg px-3 py-2 text-left text-xs transition-all flex items-center gap-2"
+          class="relative h-7 w-7 shrink-0 rounded-md transition-all flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70 focus-visible:ring-offset-1"
           :class="getItemClass(item, index)"
           @mouseenter="handleItemMouseEnter(index)"
+          @mouseleave="handleItemMouseLeave"
           @click="handleSelect(item.id)"
         >
           <component :is="getIcon(item.icon)" :size="14" class="shrink-0" />
-          <span>{{ item.label }}</span>
+          <div
+            v-if="hoveredIndex === index && !item.disabled"
+            class="pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-200/90 bg-white/95 px-2 py-1 text-[11px] font-medium text-slate-700 shadow-lg shadow-slate-200/70"
+          >
+            {{ item.label }}
+          </div>
         </button>
       </template>
     </div>
@@ -39,7 +45,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue';
-import { ClipboardPaste, Copy, Scissors, Sparkles, TextSelect } from 'lucide-vue-next';
+import { ClipboardPaste, Copy, Gem, Scissors, TextSelect } from 'lucide-vue-next';
 import type { TextareaMenuIcon, TextareaMenuItem } from '../composables/useTextareaContextMenu';
 
 const props = defineProps<{
@@ -56,6 +62,7 @@ const emit = defineEmits<{
 
 const menuRef = ref<HTMLDivElement | null>(null);
 const activeIndex = ref(0);
+const hoveredIndex = ref<number | null>(null);
 const position = reactive({
   x: 0,
   y: 0,
@@ -81,9 +88,9 @@ const getIcon = (icon: TextareaMenuIcon) => {
     case 'select-all':
       return TextSelect;
     case 'polish':
-      return Sparkles;
+      return Gem;
     default:
-      return Sparkles;
+      return Gem;
   }
 };
 
@@ -107,10 +114,6 @@ const adjustPosition = () => {
   position.y = Math.max(viewportPadding, Math.min(position.y, maxY));
 };
 
-const focusMenu = () => {
-  menuRef.value?.focus();
-};
-
 const moveActive = (delta: 1 | -1) => {
   const items = enabledIndexes.value;
   if (items.length === 0) {
@@ -128,16 +131,16 @@ const getItemClass = (item: TextareaMenuItem, index: number) => {
     if (item.variant === 'polish') {
       return 'text-indigo-200 bg-indigo-50/40 cursor-not-allowed';
     }
-    return 'text-slate-300 cursor-not-allowed';
+    return 'text-slate-300 bg-slate-50/40 cursor-not-allowed';
   }
 
   const keyboardActive = activeIndex.value === index;
   if (item.variant === 'polish') {
     return [
-      'font-semibold text-indigo-700 border border-indigo-100/80',
+      'font-semibold shadow-sm transition-all',
       keyboardActive
-        ? 'bg-gradient-to-r from-indigo-100 to-fuchsia-100 shadow-sm shadow-indigo-100/70'
-        : 'bg-gradient-to-r from-indigo-50 to-fuchsia-50 hover:from-indigo-100 hover:to-fuchsia-100',
+        ? 'bg-indigo-600 text-white'
+        : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white',
     ];
   }
 
@@ -156,10 +159,15 @@ const handleSelect = (id: string) => {
 };
 
 const handleItemMouseEnter = (index: number) => {
+  hoveredIndex.value = index;
   if (props.items[index]?.disabled) {
     return;
   }
   activeIndex.value = index;
+};
+
+const handleItemMouseLeave = () => {
+  hoveredIndex.value = null;
 };
 
 const handleKeydown = (event: KeyboardEvent) => {
@@ -169,13 +177,13 @@ const handleKeydown = (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === 'ArrowDown' || (event.key === 'Tab' && !event.shiftKey)) {
+  if (event.key === 'ArrowRight' || (event.key === 'Tab' && !event.shiftKey)) {
     event.preventDefault();
     moveActive(1);
     return;
   }
 
-  if (event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey)) {
+  if (event.key === 'ArrowLeft' || (event.key === 'Tab' && event.shiftKey)) {
     event.preventDefault();
     moveActive(-1);
     return;
@@ -207,8 +215,11 @@ const handleDocumentContextMenu = (event: MouseEvent) => {
 };
 
 const handleDocumentKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    emit('close');
+  if (!props.isOpen) {
+    return;
+  }
+  if (event.key === 'Escape' || event.key === 'ArrowRight' || event.key === 'ArrowLeft' || event.key === 'Tab' || event.key === 'Enter' || event.key === ' ') {
+    handleKeydown(event);
   }
 };
 
@@ -216,6 +227,7 @@ watch(
   () => props.isOpen,
   async (open) => {
     if (!open) {
+      hoveredIndex.value = null;
       return;
     }
 
@@ -225,7 +237,6 @@ watch(
 
     await nextTick();
     adjustPosition();
-    focusMenu();
   },
   { immediate: true }
 );
@@ -266,4 +277,3 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleDocumentKeydown);
 });
 </script>
-
