@@ -1,4 +1,4 @@
-import * as electronModule from 'electron';
+import electronMain from 'electron/main';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -6,11 +6,9 @@ import { fileURLToPath } from 'url';
 import { spawn, spawnSync, execSync } from 'child_process';
 import net from 'net';
 import crypto from 'crypto';
+import { getE2EBackendOverrides, isE2EMode } from './runtimeConfig.js';
 
-// ESM/CJS Interop for Electron
-// Sometimes electron is default, sometimes namespace.
-const electron = electronModule.default || electronModule;
-const { app, BrowserWindow, ipcMain, dialog, clipboard } = electron;
+const { app, BrowserWindow, ipcMain, dialog, clipboard } = electronMain;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -271,6 +269,7 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
+            sandbox: false,
             preload: path.join(__dirname, 'preload.js')
         }
     });
@@ -283,6 +282,9 @@ function createWindow() {
 
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
+        if (isBackendReady) {
+            mainWindow.webContents.send('backend-ready');
+        }
     });
 }
 
@@ -298,6 +300,22 @@ if (app) {
     }
 
     app.whenReady().then(async () => {
+        if (isE2EMode()) {
+            const overrides = getE2EBackendOverrides();
+            backendPort = overrides.port;
+            backendToken = overrides.token;
+            isBackendReady = true;
+            console.log(`[E2E] Enabled. Using backend config Port=${backendPort}`);
+            createWindow();
+
+            app.on('activate', () => {
+                if (BrowserWindow.getAllWindows().length === 0) {
+                    createWindow();
+                }
+            });
+            return;
+        }
+
         try {
             backendPort = await findAvailablePort(8000);
             backendToken = generateToken();

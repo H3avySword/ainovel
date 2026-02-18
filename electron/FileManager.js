@@ -1,6 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { app } from 'electron';
+import electronMain from 'electron/main';
+
+const { app } = electronMain;
 
 const writeQueues = new Map();
 
