@@ -1,7 +1,7 @@
-﻿# NEBULA WRITE v0.2.2 Release Notes
+﻿# NEBULA WRITE v0.2.3 Release Notes
 
 - 发布日期：2026-02-17
-- 对比区间：`v0.2.1...v0.2.2`
+- 对比区间：`v0.2.1...v0.2.3`
 ## 亮点更新
 
 ### 1) 新增 macOS 打包与发布支持
@@ -28,3 +28,8 @@
   - `clipboard:read-text`
   - `clipboard:write-text`
 - 通过 `preload` 暴露 `window.electronAPI.clipboard` 给渲染进程统一调用。
+
+### 5) 聊天页面消息细节控制
+- 新增消息级操作工具栏（悬浮/长按触发）：重新生成、删除记录、修改记录。
+- 新增连续发送（暂存）模式：可将多条消息暂存后合并发送，发送/暂存切换采用滑动式 Toggle 按钮。
+- 消息编辑支持行内修改与取消，编辑态自动隐藏工具栏。

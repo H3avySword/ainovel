@@ -98,10 +98,14 @@
                     :placeholder="`${targetNodeName}标题`"
                   />
                 </div>
-                <div v-if="item.summary" class="px-3 pb-3 pt-0">
-                  <div class="text-xs leading-relaxed text-slate-500 pl-9">
-                    {{ item.summary }}
-                  </div>
+                <div class="px-3 pb-3 pt-0 pl-9">
+                  <textarea
+                    :value="item.summary"
+                    @input="(e) => emit('update-summary', index, (e.target as HTMLTextAreaElement).value)"
+                    rows="3"
+                    class="w-full rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-xs leading-relaxed text-slate-500 outline-none transition-all placeholder-slate-300 hover:bg-slate-50 focus:border-indigo-200 focus:bg-white focus:ring-2 focus:ring-indigo-100 resize-y min-h-[64px]"
+                    :placeholder="`${targetNodeName}纲要`"
+                  />
                 </div>
               </div>
             </div>
@@ -174,6 +178,7 @@ const emit = defineEmits<{
   (e: 'update-chapter-count', count: number): void;
   (e: 'generate-preview'): void;
   (e: 'update-title', index: number, title: string): void;
+  (e: 'update-summary', index: number, summary: string): void;
   (e: 'apply-chapters'): void;
 }>();
 
