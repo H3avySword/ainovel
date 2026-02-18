@@ -244,6 +244,7 @@
     @update-chapter-count="(count: number) => emit('update-split-chapter-count', count)"
     @generate-preview="emit('generate-split-preview')"
     @update-title="(index: number, title: string) => emit('update-split-title', index, title)"
+    @update-summary="(index: number, summary: string) => emit('update-split-summary', index, summary)"
     @apply-chapters="emit('apply-split-chapters')"
   />
 </template>
@@ -292,6 +293,7 @@ const emit = defineEmits<{
   (e: 'update-split-chapter-count', count: number): void;
   (e: 'generate-split-preview'): void;
   (e: 'update-split-title', index: number, title: string): void;
+  (e: 'update-split-summary', index: number, summary: string): void;
   (e: 'apply-split-chapters'): void;
   (e: 'cancel-polish-selection', payload: { nodeId: string; field: 'summary' | 'content' }): void;
 }>();

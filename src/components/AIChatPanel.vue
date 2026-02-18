@@ -138,7 +138,7 @@
                 {{ getTaskLabel(activeTask.type) }}
             </span>
             <span class="text-xs text-indigo-900 truncate font-medium">
-                正在为 [{{ activeTaskNodeTitle }}] {{ getTaskActionLabel(activeTask.type) }}...
+                正在对 [{{ activeTaskNodeTitle }}] {{ getTaskActionLabel(activeTask.type) }}...
             </span>
         </div>
         <button @click="$emit('cancel-task')" class="text-indigo-400 hover:text-indigo-700 transition-colors bg-white/50 rounded-full p-0.5">
@@ -147,22 +147,112 @@
       </div>
 
       <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 pt-12">
-        <div v-for="msg in messages" :key="msg.id" class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+        <div
+          v-for="msg in messages"
+          :key="msg.id"
+          class="flex"
+          :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
+        >
+          <div
+            :data-chat-message-id="msg.id"
+            class="max-w-[85%] flex flex-col focus:outline-none"
+            @mouseenter="handleMessageMouseEnter(msg.id)"
+            @mouseleave="handleMessageMouseLeave(msg.id)"
+            @pointerdown="handleMessagePointerDown(msg.id, $event)"
+            @pointerup="handleMessagePointerUp($event)"
+            @pointercancel="handleMessagePointerCancel($event)"
+          >
             <div
-                class="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm"
-                :class="msg.role === 'user'
-                  ? 'bg-indigo-600 text-white rounded-br-none'
-                  : msg.isError
-                    ? 'bg-red-50 text-red-600 border border-red-100 rounded-bl-none'
-                    : 'bg-white text-slate-700 border border-indigo-50 rounded-bl-none'"
-            >
-                <div v-if="msg.role === 'model' && !msg.isError" class="flex items-center gap-2 mb-1 text-xs font-bold text-indigo-400 uppercase tracking-wider">
-                    <Bot :size="12" /> AI 灵感 ({{ aiModel.includes('flash') ? 'Flash' : 'Pro' }})
-                </div>
-                <div class="whitespace-pre-wrap">{{ msg.text }}</div>
-                
-
+            class="rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm"
+            :class="msg.role === 'user'
+              ? 'bg-indigo-600 text-white rounded-br-none'
+              : msg.isError
+                ? 'bg-red-50 text-red-600 border border-red-100 rounded-bl-none'
+                : 'bg-white text-slate-700 border border-indigo-50 rounded-bl-none'"
+          >
+            <div v-if="msg.role === 'model' && !msg.isError" class="flex items-center gap-2 mb-1 text-xs font-bold text-indigo-400 uppercase tracking-wider">
+              <Bot :size="12" /> AI 灵感 ({{ aiModel.includes('flash') ? 'Flash' : 'Pro' }})
             </div>
+
+            <template v-if="isEditingMessage(msg.id)">
+              <textarea
+                v-model="editingDraft"
+                rows="4"
+                class="w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-y min-h-[88px]"
+                @keydown.esc.prevent="cancelEditMessage"
+                @keydown.ctrl.enter.prevent="saveEditedMessage"
+              ></textarea>
+              <div class="mt-2 flex items-center gap-1.5" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+                <button
+                  @click="saveEditedMessage"
+                  :disabled="isLoading"
+                  class="h-7 px-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  title="保存修改"
+                  aria-label="保存修改"
+                >
+                  <Check :size="14" />
+                </button>
+                <button
+                  @click="cancelEditMessage"
+                  :disabled="isLoading"
+                  class="h-7 px-2 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  title="取消修改"
+                  aria-label="取消修改"
+                >
+                  <X :size="14" />
+                </button>
+              </div>
+            </template>
+
+            <div v-else class="whitespace-pre-wrap">{{ msg.text }}</div>
+            <div
+              v-if="msg.role === 'user' && isQueuedMessage(msg.id)"
+              class="mt-2 text-[10px] font-semibold text-white/75"
+            >
+              待发送
+            </div>
+          </div>
+
+            <div
+              v-if="shouldRenderToolbar(msg.id)"
+              class="mt-0.5 inline-flex items-center gap-px bg-slate-50/30"
+              :class="msg.role === 'user' ? 'self-end' : 'self-start'"
+            >
+            <button
+              @click="handleDeleteMessage(msg.id)"
+              :disabled="isLoading"
+              class="h-7 w-7 shrink-0 rounded-md text-slate-500 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70 focus-visible:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-rose-50 hover:text-rose-600 active:bg-rose-100 flex items-center justify-center"
+              title="删除消息"
+              aria-label="删除消息"
+            >
+              <Trash2 :size="14" />
+            </button>
+            <button
+              @click="startEditMessage(msg.id)"
+              :disabled="isLoading"
+              class="h-7 w-7 shrink-0 rounded-md text-slate-500 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70 focus-visible:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 hover:text-indigo-600 active:bg-indigo-50 flex items-center justify-center"
+              title="修改消息"
+              aria-label="修改消息"
+            >
+              <SquarePen :size="14" />
+            </button>
+            <button
+              v-if="msg.role === 'user'"
+              @click="regenerateFromMessage(msg.id)"
+              :disabled="isLoading || hasQueuedMessages || isQueuedMessage(msg.id)"
+              class="h-7 w-7 shrink-0 rounded-md bg-indigo-50 text-indigo-600 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70 focus-visible:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-100 hover:text-indigo-700 active:bg-indigo-200 flex items-center justify-center"
+              title="从此消息重新生成"
+              aria-label="从此消息重新生成"
+            >
+              <Loader2
+                v-if="isLoading && activeRegenerateMessageId === msg.id"
+                :size="14"
+                class="animate-spin"
+              />
+              <RotateCw v-else :size="14" />
+            </button>
+            </div>
+          </div>
         </div>
         <div v-if="isLoading" class="flex justify-start">
             <div class="bg-white border border-indigo-50 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm">
@@ -181,7 +271,7 @@
               @keydown.enter.exact.prevent="handleSendMessage"
               @contextmenu="handleInputTextareaContextMenu"
               placeholder="输入您的想法或修改建议..."
-              class="w-full pl-4 pr-12 py-3 rounded-xl bg-slate-50 border border-indigo-100 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm text-slate-700 max-h-32 shadow-inner"
+              class="w-full pl-4 pr-20 py-3 rounded-xl bg-slate-50 border border-indigo-100 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm text-slate-700 max-h-32 shadow-inner"
               rows="2"
             ></textarea>
             
@@ -196,13 +286,39 @@
                  </button>
             </div>
 
-            <button
-              @click="handleSendMessage"
-              :disabled="isLoading || !input.trim()"
-              class="absolute right-2 bottom-2 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-indigo-200"
-            >
-              <Send :size="16" />
-            </button>
+            <!-- Combined send/batch sliding toggle -->
+            <div class="absolute right-1 bottom-1.5 inline-flex h-8 p-[3px] rounded-[10px] bg-slate-200/80 shadow-[inset_0_1px_3px_rgba(0,0,0,0.08)]">
+              <div
+                class="absolute top-[3px] bottom-[3px] w-[calc(50%-3px)] rounded-[7px] bg-indigo-600 shadow-md shadow-indigo-400/30 transition-[left] duration-300"
+                :style="{ left: isBatchComposeMode ? '50%' : '3px', transitionTimingFunction: 'cubic-bezier(0.76,0.05,0.24,0.95)' }"
+              ></div>
+              <button
+                @click="isBatchComposeMode ? toggleBatchComposeMode() : handleSendMessage()"
+                :disabled="isBatchComposeMode ? isLoading : (isLoading || !input.trim())"
+                class="relative z-10 w-8 h-full flex items-center justify-center rounded-[7px] transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="!isBatchComposeMode ? 'text-white' : 'text-slate-400 hover:text-slate-600'"
+                :title="isBatchComposeMode ? '发送模式' : '发送消息'"
+                :aria-label="isBatchComposeMode ? '发送模式' : '发送消息'"
+              >
+                <Send :size="14" />
+              </button>
+              <button
+                @click="!isBatchComposeMode ? toggleBatchComposeMode() : handleSendMessage()"
+                :disabled="!isBatchComposeMode ? isLoading : (isLoading || !input.trim())"
+                class="relative z-10 w-8 h-full flex items-center justify-center rounded-[7px] transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="isBatchComposeMode ? 'text-white' : 'text-slate-400 hover:text-slate-600'"
+                :title="!isBatchComposeMode ? '暂存模式' : '暂存消息'"
+                :aria-label="!isBatchComposeMode ? '暂存模式' : '暂存消息'"
+              >
+                <Archive :size="14" />
+                <span
+                  v-if="queuedMessageIds.length > 0"
+                  class="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-amber-500 text-white text-[9px] leading-[14px] font-bold text-center shadow-sm"
+                >
+                  {{ queuedMessageIds.length }}
+                </span>
+              </button>
+            </div>
         </div>
         <div class="text-[10px] text-center text-slate-400 mt-2 italic">
             已开启上下文智能感知
@@ -222,10 +338,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted, nextTick, computed } from 'vue';
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
 import {
-  Send, Sparkles, Loader2, Bot, Settings,
-  X, ChevronDown, CheckCircle2, KeyRound, Save
+  Send, Sparkles, Loader2, Bot, Settings, Archive,
+  X, ChevronDown, CheckCircle2, KeyRound, Save, Trash2, SquarePen, RotateCw, Check
 } from 'lucide-vue-next';
 import CustomSelect from './CustomSelect.vue';
 import NoticeStack from './NoticeStack.vue';
@@ -271,6 +387,15 @@ const input = ref('');
 const isLoading = ref(false);
 const messagesEndRef = ref<HTMLDivElement | null>(null);
 const inputTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const editingMessageId = ref<string | null>(null);
+const editingDraft = ref('');
+const activeRegenerateMessageId = ref<string | null>(null);
+const isBatchComposeMode = ref(false);
+const queuedMessageIds = ref<string[]>([]);
+const activeTouchToolbarMessageId = ref<string | null>(null);
+const hoveredToolbarMessageId = ref<string | null>(null);
+const MESSAGE_LONG_PRESS_MS = 420;
+let messageLongPressTimer: ReturnType<typeof setTimeout> | null = null;
 const {
     menuState: textareaMenuState,
     menuItems: textareaMenuItems,
@@ -791,24 +916,179 @@ const handleTextareaMenuSelect = async (actionId: string) => {
     await runTextareaMenuAction(actionId as 'cut' | 'copy' | 'paste' | 'select-all' | 'polish');
 };
 
-const handleSendMessage = async () => {
-    if (!input.value.trim() || isLoading.value) return;
-    void persistPreferredProvider(currentProviderId.value);
+const createMessageId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: input.value };
-    messages.value.push(userMsg);
-    input.value = '';
+const buildHistoryPayload = (historyMessages: ChatMessage[]) => {
+    return historyMessages.map((item) => ({
+        role: item.role,
+        parts: [{ text: item.text }]
+    }));
+};
+
+const hasQueuedMessages = computed(() => queuedMessageIds.value.length > 0);
+const queuedMessageIdSet = computed(() => new Set(queuedMessageIds.value));
+
+const isEditingMessage = (messageId: string) => editingMessageId.value === messageId;
+const isQueuedMessage = (messageId: string) => queuedMessageIdSet.value.has(messageId);
+
+const toggleBatchComposeMode = () => {
+    if (isLoading.value) return;
+    isBatchComposeMode.value = !isBatchComposeMode.value;
+};
+
+const clearQueuedMessages = () => {
+    queuedMessageIds.value = [];
+};
+
+const enqueueUserMessage = (text: string) => {
+    const queuedMessage: ChatMessage = {
+        id: createMessageId(),
+        role: 'user',
+        text
+    };
+    messages.value.push(queuedMessage);
+    queuedMessageIds.value.push(queuedMessage.id);
+};
+
+const collapseQueuedMessagesWithCurrentInput = (currentInputText: string): ChatMessage | null => {
+    const queuedIdSet = new Set(queuedMessageIds.value);
+    if (queuedIdSet.size === 0) {
+        return null;
+    }
+
+    const queuedMessages = messages.value.filter((item) => queuedIdSet.has(item.id) && item.role === 'user');
+    if (queuedMessages.length === 0) {
+        clearQueuedMessages();
+        return null;
+    }
+
+    const mergedParts = queuedMessages
+        .map((item) => item.text.trim())
+        .filter((item) => !!item);
+
+    const currentText = currentInputText.trim();
+    if (currentText) {
+        mergedParts.push(currentText);
+    }
+    if (mergedParts.length === 0) {
+        clearQueuedMessages();
+        return null;
+    }
+
+    const mergedMessage: ChatMessage = {
+        id: createMessageId(),
+        role: 'user',
+        text: mergedParts.join('\n')
+    };
+
+    const firstQueuedIndex = messages.value.findIndex((item) => queuedIdSet.has(item.id));
+    const nextMessages = messages.value.filter((item) => !queuedIdSet.has(item.id));
+    if (firstQueuedIndex >= 0) {
+        nextMessages.splice(firstQueuedIndex, 0, mergedMessage);
+    } else {
+        nextMessages.push(mergedMessage);
+    }
+    messages.value = nextMessages;
+    clearQueuedMessages();
+
+    return mergedMessage;
+};
+
+const clearToolbarVisibilityState = () => {
+    hoveredToolbarMessageId.value = null;
+    activeTouchToolbarMessageId.value = null;
+};
+
+const cancelEditMessage = () => {
+    editingMessageId.value = null;
+    editingDraft.value = '';
+    clearToolbarVisibilityState();
+};
+
+const clearMessageLongPressTimer = () => {
+    if (messageLongPressTimer) {
+        clearTimeout(messageLongPressTimer);
+        messageLongPressTimer = null;
+    }
+};
+
+const isTouchToolbarVisible = (messageId: string) => {
+    return activeTouchToolbarMessageId.value === messageId;
+};
+
+const shouldRenderToolbar = (messageId: string) => {
+    if (isEditingMessage(messageId)) {
+        return false;
+    }
+    return (
+        hoveredToolbarMessageId.value === messageId ||
+        isTouchToolbarVisible(messageId)
+    );
+};
+
+const handleMessageMouseEnter = (messageId: string) => {
+    hoveredToolbarMessageId.value = messageId;
+};
+
+const handleMessageMouseLeave = (messageId: string) => {
+    if (hoveredToolbarMessageId.value === messageId) {
+        hoveredToolbarMessageId.value = null;
+    }
+};
+
+const isTouchLikePointer = (event: PointerEvent) => {
+    return event.pointerType === 'touch' || event.pointerType === 'pen';
+};
+
+const handleMessagePointerDown = (messageId: string, event: PointerEvent) => {
+    if (!isTouchLikePointer(event) || isEditingMessage(messageId)) {
+        return;
+    }
+
+    clearMessageLongPressTimer();
+    messageLongPressTimer = setTimeout(() => {
+        hoveredToolbarMessageId.value = null;
+        activeTouchToolbarMessageId.value = messageId;
+    }, MESSAGE_LONG_PRESS_MS);
+};
+
+const handleMessagePointerUp = (event: PointerEvent) => {
+    if (!isTouchLikePointer(event)) {
+        return;
+    }
+
+    clearMessageLongPressTimer();
+};
+
+const handleMessagePointerCancel = (event: PointerEvent) => {
+    if (!isTouchLikePointer(event)) {
+        return;
+    }
+
+    clearMessageLongPressTimer();
+};
+
+const handlePointerDownOutsideMessage = (event: PointerEvent) => {
+    if (!activeTouchToolbarMessageId.value) {
+        return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    const ownerMessageId = target?.closest<HTMLElement>('[data-chat-message-id]')?.dataset?.chatMessageId;
+    if (ownerMessageId === activeTouchToolbarMessageId.value) {
+        return;
+    }
+
+    clearToolbarVisibilityState();
+};
+
+const requestAssistantReply = async (currentUserText: string, historyMessages: ChatMessage[]) => {
     isLoading.value = true;
 
     try {
-        const history = messages.value.map(m => ({
-            role: m.role,
-            parts: [{ text: m.text }]
-        }));
-
         const responseText = await generateWritingAssistantResponse(
-            history,
-            userMsg.text,
+            buildHistoryPayload(historyMessages),
+            currentUserText,
             {
                 projectMode: props.projectMode,
                 novelPath: props.filePath,
@@ -824,19 +1104,122 @@ const handleSendMessage = async () => {
             }
         );
 
-        const aiMsg: ChatMessage = { id: (Date.now() + 1).toString(), role: 'model', text: responseText };
-        messages.value.push(aiMsg);
+        messages.value.push({
+            id: createMessageId(),
+            role: 'model',
+            text: responseText
+        });
     } catch (error) {
-        const errorMsg: ChatMessage = {
-            id: (Date.now() + 1).toString(),
+        messages.value.push({
+            id: createMessageId(),
             role: 'model',
             text: '连接创作服务失败，请检查 API 配置后重试。',
             isError: true
-        };
-        messages.value.push(errorMsg);
+        });
     } finally {
         isLoading.value = false;
     }
+};
+
+const handleSendMessage = async () => {
+    if (!input.value.trim() || isLoading.value) return;
+    void persistPreferredProvider(currentProviderId.value);
+    clearToolbarVisibilityState();
+
+    const currentText = input.value.trim();
+
+    if (isBatchComposeMode.value) {
+        enqueueUserMessage(currentText);
+        input.value = '';
+        return;
+    }
+
+    if (hasQueuedMessages.value) {
+        const mergedUserMsg = collapseQueuedMessagesWithCurrentInput(currentText);
+        input.value = '';
+        if (!mergedUserMsg) {
+            return;
+        }
+        await requestAssistantReply(mergedUserMsg.text, [...messages.value]);
+        return;
+    }
+
+    const userMsg: ChatMessage = {
+        id: createMessageId(),
+        role: 'user',
+        text: currentText
+    };
+    messages.value.push(userMsg);
+    input.value = '';
+    await requestAssistantReply(userMsg.text, [...messages.value]);
+};
+
+const handleDeleteMessage = (messageId: string) => {
+    if (isLoading.value) return;
+    clearToolbarVisibilityState();
+    messages.value = messages.value.filter((item) => item.id !== messageId);
+    queuedMessageIds.value = queuedMessageIds.value.filter((item) => item !== messageId);
+    if (editingMessageId.value === messageId) {
+        cancelEditMessage();
+    }
+    if (activeRegenerateMessageId.value === messageId) {
+        activeRegenerateMessageId.value = null;
+    }
+};
+
+const startEditMessage = (messageId: string) => {
+    if (isLoading.value) return;
+    clearToolbarVisibilityState();
+    const target = messages.value.find((item) => item.id === messageId);
+    if (!target) return;
+    editingMessageId.value = messageId;
+    editingDraft.value = target.text;
+};
+
+const regenerateFromMessage = async (messageId: string) => {
+    if (isLoading.value) return;
+    if (hasQueuedMessages.value || isQueuedMessage(messageId)) {
+        openNotice('info', '待发送消息未提交', '请先关闭连续发送模式并发送一条新消息提交队列。');
+        return;
+    }
+    clearToolbarVisibilityState();
+    const index = messages.value.findIndex((item) => item.id === messageId);
+    if (index < 0) return;
+
+    const target = messages.value[index];
+    if (target.role !== 'user') return;
+
+    cancelEditMessage();
+    messages.value = messages.value.slice(0, index + 1);
+    activeRegenerateMessageId.value = target.id;
+
+    try {
+        await requestAssistantReply(target.text, [...messages.value]);
+    } finally {
+        activeRegenerateMessageId.value = null;
+    }
+};
+
+const saveEditedMessage = async () => {
+    if (!editingMessageId.value || isLoading.value) return;
+    const index = messages.value.findIndex((item) => item.id === editingMessageId.value);
+    if (index < 0) {
+        cancelEditMessage();
+        return;
+    }
+
+    const nextText = editingDraft.value.trim();
+    if (!nextText) {
+        openNotice('error', 'Edit failed', 'Message cannot be empty');
+        return;
+    }
+
+    const target = messages.value[index];
+    messages.value[index] = {
+        ...target,
+        text: nextText
+    };
+    cancelEditMessage();
 };
 
 const refreshApiKeyStatus = async () => {
@@ -1032,7 +1415,14 @@ watch(currentProviderId, () => {
 
 void restorePreferredProvider();
 
+onMounted(() => {
+    document.addEventListener('pointerdown', handlePointerDownOutsideMessage);
+});
+
 onUnmounted(() => {
+    clearToolbarVisibilityState();
+    clearMessageLongPressTimer();
+    document.removeEventListener('pointerdown', handlePointerDownOutsideMessage);
     document.removeEventListener('mousedown', handleClickOutside);
     document.removeEventListener('keydown', handleEscKey);
     clearNotices();
@@ -1100,3 +1490,4 @@ const handleApplyLast = () => {
     }
 };
 </script>
+

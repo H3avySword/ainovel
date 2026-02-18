@@ -106,6 +106,7 @@
                 @update-split-chapter-count="handleUpdateSplitChapterCount"
                 @generate-split-preview="handleGenerateSplitPreview"
                 @update-split-title="handleUpdateSplitTitle"
+                @update-split-summary="handleUpdateSplitSummary"
                 @apply-split-chapters="handleApplySplitChapters"
               />
              <div v-else class="h-full flex flex-col items-center justify-center text-slate-300 space-y-4">
@@ -927,6 +928,14 @@ const handleUpdateSplitTitle = (index: number, title: string) => {
     splitPreviewChapters.value[index] = {
         ...splitPreviewChapters.value[index],
         title
+    };
+};
+
+const handleUpdateSplitSummary = (index: number, summary: string) => {
+    if (!splitPreviewChapters.value[index]) return;
+    splitPreviewChapters.value[index] = {
+        ...splitPreviewChapters.value[index],
+        summary
     };
 };
 
