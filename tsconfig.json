@@ -17,26 +17,24 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
+    "baseUrl": ".",
     "paths": {
       "@/*": [
-        "./*"
+        "src/renderer/*"
       ]
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
   "include": [
-    "src/**/*.ts",
-    "src/**/*.d.ts",
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.d.ts",
     "vite.config.ts"
   ],
   "exclude": [
-    "src/**/*.test.ts",
-    "electron/**/*.test.ts",
-    "backend/**",
-    "e2e/**",
-    "playwright.config.ts",
-    "vitest*.config.ts",
+    "tests/**",
+    "src/python_backend/**",
+    "configs/**",
     "node_modules",
     "dist"
   ]

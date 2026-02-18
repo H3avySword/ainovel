@@ -2,7 +2,7 @@
     "name": "nebula-write-local",
     "productName": "NEBULA WRITE",
     "version": "0.2.3",
-    "main": "electron/main.js",
+    "main": "src/electron/main/main.js",
     "type": "module",
     "description": "AI Novel Studio desktop app",
     "author": "DarkIceField",
@@ -12,15 +12,15 @@
         "preview": "vite preview",
         "test": "npm run test:fast",
         "test:fast": "npm run test:unit && npm run test:component && npm run test:electron && npm run test:py",
-        "test:unit": "vitest run -c vitest.unit.config.ts",
-        "test:component": "vitest run -c vitest.component.config.ts",
-        "test:electron": "vitest run -c vitest.electron.config.ts",
-        "test:e2e:web": "npm run build && start-server-and-test \"npm run preview -- --host 127.0.0.1 --port 4173\" http-get://127.0.0.1:4173 \"playwright test --project=web-e2e\"",
-        "test:e2e:electron": "npm run build && node e2e/electron/smoke.js",
-        "test:py": "python -m pytest backend/tests -q -m \"not live\"",
-        "test:live:providers": "python -m pytest backend/tests -q -m live",
-        "test:coverage": "vitest run -c vitest.config.ts --coverage && python -m pytest backend/tests -q -m \"not live\" --cov=backend --cov-report=term-missing",
-        "backend:build": "python -m PyInstaller --noconfirm --clean --onefile --name backend --distpath backend/dist --workpath backend/build --specpath backend backend/main.py",
+        "test:unit": "vitest run -c configs/vitest/vitest.unit.config.ts",
+        "test:component": "vitest run -c configs/vitest/vitest.component.config.ts",
+        "test:electron": "vitest run -c configs/vitest/vitest.electron.config.ts",
+        "test:e2e:web": "npm run build && start-server-and-test \"npm run preview -- --host 127.0.0.1 --port 4173\" http-get://127.0.0.1:4173 \"playwright test --config configs/playwright/playwright.config.ts --project=web-e2e\"",
+        "test:e2e:electron": "npm run build && node tests/e2e/system/smoke.electron.js",
+        "test:py": "python -m pytest -c configs/python/pytest.ini tests/backend -q -m \"not live\"",
+        "test:live:providers": "python -m pytest -c configs/python/pytest.ini tests/backend/contract/test_live_providers.py -q -m live",
+        "test:coverage": "vitest run -c configs/vitest/vitest.config.ts --coverage && python -m pytest -c configs/python/pytest.ini tests/backend -q -m \"not live\" --cov=src/python_backend --cov-report=term-missing",
+        "backend:build": "python -m PyInstaller --noconfirm --clean --onefile --name backend --distpath src/python_backend/dist --workpath src/python_backend/build --specpath src/python_backend src/python_backend/main.py",
         "electron:build": "npm run backend:build && set CSC_IDENTITY_AUTO_DISCOVERY=false&& vite build && electron-builder"
     },
     "build": {
@@ -32,12 +32,12 @@
         },
         "files": [
             "dist/**",
-            "electron/**",
+            "src/electron/**",
             "package.json"
         ],
         "extraResources": [
             {
-                "from": "backend",
+                "from": "src/python_backend",
                 "to": "backend",
                 "filter": [
                     "**/*",
@@ -53,7 +53,7 @@
         "win": {
             "extraResources": [
                 {
-                    "from": "backend/dist/backend.exe",
+                    "from": "src/python_backend/dist/backend.exe",
                     "to": "backend/backend.exe"
                 }
             ],
@@ -64,7 +64,7 @@
         "mac": {
             "extraResources": [
                 {
-                    "from": "backend/dist/backend",
+                    "from": "src/python_backend/dist/backend",
                     "to": "backend/backend.exe"
                 }
             ],

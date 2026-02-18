@@ -27,7 +27,7 @@ jobs:
         run: |
           npm install
           python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+          pip install -r src/python_backend/requirements.txt -r src/python_backend/requirements-dev.txt
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -56,7 +56,7 @@ jobs:
         run: |
           npm install
           python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+          pip install -r src/python_backend/requirements.txt -r src/python_backend/requirements-dev.txt
 
       - name: Run electron e2e
         run: npm run test:e2e:electron
@@ -76,7 +76,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+          pip install -r src/python_backend/requirements.txt -r src/python_backend/requirements-dev.txt
 
       - name: Run optional live provider smoke tests
         env:
@@ -85,4 +85,4 @@ jobs:
           LIVE_OPENAI_BASE_URL: ${{ secrets.LIVE_OPENAI_BASE_URL }}
           LIVE_DEEPSEEK_API_KEY: ${{ secrets.LIVE_DEEPSEEK_API_KEY }}
           LIVE_DEEPSEEK_BASE_URL: ${{ secrets.LIVE_DEEPSEEK_BASE_URL }}
-        run: python -m pytest backend/tests/test_live_providers.py -q -m live
+        run: python -m pytest -c configs/python/pytest.ini tests/backend/contract/test_live_providers.py -q -m live

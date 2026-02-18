@@ -30,7 +30,7 @@ Nebula Write 是一个本地优先的桌面写作工具，使用 Vue 3 + Electro
 npm install
 
 # Python 依赖（建议在虚拟环境中）
-pip install -r backend/requirements.txt
+pip install -r src/python_backend/requirements.txt
 ```
 
 ## Provider 配置
@@ -73,15 +73,32 @@ python -m PyInstaller ...
 这表示它会使用“当前终端里的 `python`”。  
 如果你希望使用某个虚拟环境打包，请先激活该环境，再执行 `npm run backend:build` 或 `npm run electron:build`。
 
+## 测试命令
+
+```bash
+npm run test
+npm run test:fast
+npm run test:unit
+npm run test:component
+npm run test:electron
+npm run test:e2e:web
+npm run test:e2e:electron
+npm run test:py
+npm run test:live:providers
+```
+
 ## 项目结构
 
 ```text
-localapp/
-├── src/                      # Vue 前端
-├── electron/                 # Electron 主进程/预加载/IPC
-├── backend/                  # FastAPI 与 Provider 服务
-├── scripts/                  # 脚本化验证
-├── data/                     # 本地数据（含 provider_settings.json 等）
+repo/
+├── src/
+│   ├── electron/                # Electron 主进程/预加载/IPC
+│   ├── renderer/                # Vue 前端
+│   └── python_backend/          # FastAPI 与 Provider 服务
+├── tests/                       # 单元/集成/E2E 测试
+├── configs/                     # Vitest/Playwright/Pytest 配置
+├── data/                        # 本地数据（含 provider_settings.json 等）
+├── STRUCTURE.md                 # 结构说明（详细）
 └── package.json
 ```
 
@@ -89,8 +106,9 @@ localapp/
 
 ```bash
 npm run build
-python scripts/verify_api.py
-python backend/check_health.py
+npm run test:fast
+python tests/backend/contract/verify_api.py
+python src/python_backend/check_health.py
 ```
 
 ## 版本更新
